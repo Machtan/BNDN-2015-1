@@ -1,4 +1,6 @@
 # Not visual studio ;)
+*.exe
+
 
 # Don't include mac build data :p
 fcar/fcar/target/*
