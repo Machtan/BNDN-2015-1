@@ -9,6 +9,11 @@ let (|Prefix|_|) (p:string) (s:string) =
     else
         None
 
+type Node = {
+    
+}
+ 
+
 [<EntryPoint>]
 let main args = 
     let port = 8080;
