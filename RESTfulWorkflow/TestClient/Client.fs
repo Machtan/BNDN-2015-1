@@ -1,5 +1,7 @@
 ﻿module Client
 
+// --debois, Mar '15
+
 let test r = 
     let port = 8080
     let url = sprintf "http://localhost:8080/resource/%s" r
@@ -18,4 +20,3 @@ let main _ =
     test "B"
     0
 
-// --debois, Mar '15

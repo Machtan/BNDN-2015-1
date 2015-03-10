@@ -1,4 +1,5 @@
-﻿module Server
+﻿// --debois, Mar '15
+module Server
 
 // REST key-value store. 
 
@@ -72,6 +73,4 @@ let main args =
     
     // Dead code.
     0
-
-// --debois, Mar '15
 
