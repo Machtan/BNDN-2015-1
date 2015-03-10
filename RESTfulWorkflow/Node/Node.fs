@@ -9,13 +9,60 @@ let (|Prefix|_|) (p:string) (s:string) =
     else
         None
 
+type Relation =             // The internal string is a http address
+    | Condition of string   // What is enabled once a node is executed
+    | Exclusion of string   // What becomes excluded once this node is executed
+    | Response of string    // What becomes pending once a node is executed
+
 type Node = {
-    
+    executed: bool;
+    included: bool;
+    pending: bool;
+    relations: Relation list;
+    dependencies: Map<string, bool>; // Whether each condition is fulfilled
+    // Ex: {"register": false}
 }
- 
+
+// Add a relation to the node
+let addRelation node relation =
+    failwith "Not implemented"
+
+// Add a dependency to the node
+let addDependency node dependency =
+    failwith "Not Implemented"
+
+// Notify the node that a dependency has been executed
+let setExecuted node dependency =
+    failwith  "Not Implemented"
+
+// Notify the node that it has become pending
+let setPending node =
+    failwith  "Not Implemented"
+
+// Handles when the node is executed
+let tryExecute node =
+    let rec notify remainingRelations =
+        failwith  "Not Implemented"
+    failwith  "Not Implemented"
+
+// Returns the status of the node (Should this be here?)
+// Note: This should not return the node
+let getStatus node =
+    failwith  "Not Implemented"
+
+// Ezcludes the node
+let exclude node =
+    failwith  "Not Implemented"
 
 [<EntryPoint>]
 let main args = 
+    let name = 
+        match args with
+        | [||] -> failwith "No name argument given for the node"
+        | [|arg|] -> arg
+        | _ -> failwith "Too many arguments"
+        
+    printfn "Starting node '%s'!" name
     let port = 8080;
     use hl = new System.Net.HttpListener ()
     hl.Prefixes.Add <| sprintf "http://+:%d/" port
@@ -23,7 +70,14 @@ let main args =
     // https://msdn.microsoft.com/en-us/library/system.net.httplistenerprefixcollection.add(v=vs.110).aspx
     hl.Start ()
     printfn "Listener up @ 0.0.0.0:%d" port
-
+    
+    let mut state: Node = {
+        executed = false;
+        included = true;
+        pending = false;
+        relations = [];
+        dependencies = Map.empty;
+    }
    
     let rec loop (store : Map<string, string>) = 
         let cxt      = hl.GetContext()
