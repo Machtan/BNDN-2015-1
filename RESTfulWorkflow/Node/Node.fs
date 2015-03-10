@@ -1,27 +1,46 @@
 ﻿// --debois, Mar '15
 module Server
 
-// REST key-value store. 
-
-let (|Prefix|_|) (p:string) (s:string) =
-    if s.StartsWith(p) then
-        Some(s.Substring(p.Length))
-    else
-        None
-
+// The types of relations the nodes can know of 
 type Relation =             // The internal string is a http address
     | Condition of string   // What is enabled once a node is executed
     | Exclusion of string   // What becomes excluded once this node is executed
     | Response of string    // What becomes pending once a node is executed
 
+// The record type for an event node. 
+// We only really use this as the state singleton (which is nice, tho)
 type Node = {
+    name: string;
     executed: bool;
     included: bool;
     pending: bool;
     relations: Relation list;
-    dependencies: Map<string, bool>; // Whether each condition is fulfilled
+    conditions: Map<string, bool>; // Whether each condition is fulfilled
     // Ex: {"register": false}
 }
+
+// The types of messages that the nodes can send
+type Message =
+    | Executed of string    // The target is notified that this is executed
+                            // Argument is(The name of this node)
+    | SetExcluded           // The target node becomes excluded
+    | SetPending            // The target node becomes pending
+    | AddCondition          // The target node is not included before this one
+    | RemoveCondition       // This node is excluded, so a condition is voided
+
+// Sends a message to another event node
+// NOTE: This should probably be async / threaded, since it should
+// be able to send messages to itself 
+let sendMessage (destNodeUrl: string) (msg: Message) =
+    use w = new System.Net.WebClient ()
+    let cmd = 
+        match msg with
+        | Executed( name )  -> sprintf "executed:%s" name
+        | SetExcluded       -> "set_excluded"
+        | SetPending        -> "set_pending"
+        | AddCondition      -> "add_condition"
+        | RemoveCondition   -> "remove_condition"
+    w.UploadString(destNodeUrl, "PUT", cmd)
 
 // Add a relation to the node
 let addRelation node relation =
@@ -41,18 +60,52 @@ let setPending node =
 
 // Handles when the node is executed
 let tryExecute node =
-    let rec notify remainingRelations =
-        failwith  "Not Implemented"
-    failwith  "Not Implemented"
+    let rec notify = function
+    | [] -> ()
+    | relation::remainder ->
+        let result = 
+            match relation with
+            | Condition dest -> sendMessage dest (Executed node.name)
+            | Exclusion dest -> sendMessage dest SetExcluded
+            | Response dest  -> sendMessage dest SetPending
+        // TODO do something with the result
+        notify remainder
+    
+    if Map.forall (fun k v -> v) node.conditions // All deps are OK
+    then 
+        notify node.relations // In order?
+        Some { node with executed = true; }
+    else
+        printfn "The node was attempted executed, but all conditions were not met!"
+        None
+    
 
 // Returns the status of the node (Should this be here?)
 // Note: This should not return the node
 let getStatus node =
     failwith  "Not Implemented"
 
-// Ezcludes the node
+// Excludes the node
 let exclude node =
-    failwith  "Not Implemented"
+    let rec notify = function 
+    | [] -> ()
+    | relation::remainder ->
+        match relation with
+        | Condition target -> 
+            let result = sendMessage target RemoveCondition
+            // TODO handle the result / error
+            ()
+        | _ -> ()
+        notify remainder
+    notify node.relations
+    { node with included = false; } // TODO What about executed?
+
+// REST key-value store. 
+let (|Prefix|_|) (p:string) (s:string) =
+    if s.StartsWith(p) then
+        Some(s.Substring(p.Length))
+    else
+        None
 
 [<EntryPoint>]
 let main args = 
@@ -72,11 +125,12 @@ let main args =
     printfn "Listener up @ 0.0.0.0:%d" port
     
     let mut state: Node = {
+        name = name;
         executed = false;
         included = true;
         pending = false;
         relations = [];
-        dependencies = Map.empty;
+        conditions = Map.empty;
     }
    
     let rec loop (store : Map<string, string>) = 
