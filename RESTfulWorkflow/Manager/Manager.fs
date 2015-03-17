@@ -1,36 +1,37 @@
 ﻿
 let port = "8080"
+let serverName = "Midlertidigt navn"
+let url = sprintf "http://localhost:%s/%s" port serverName
 
-let mutable events = "test"::[]
-
-let CreateEvent name =
-    let p = new System.Diagnostics.Process()
-    p.StartInfo.FileName <- "Node.exe"
-    p.StartInfo.Arguments <- (name)
-    ignore (p.Start())
-    ignore (events = name::events)
-    printfn "Created event %s" name
-
-let Put event reTyp tohttp =
-    let url = sprintf "http://localhost:%s/%s/(%s,%s)" port event reTyp tohttp
-
+let createEvent name =
     use w = new System.Net.WebClient ()
-    w.UploadString(url, "PUT", "new relation")      |> printfn "PUT /%s/%s [%s] --> %s" event reTyp tohttp
+    let url = (sprintf " %s/%s" url name)
+    w.UploadString(url, "CREATE")
+        |> printfn "CREATE %s/%s --> %s" serverName name
 
+let createRelen fromEvent reTyp toEvent =
+    use w = new System.Net.WebClient ()
+    let url = (sprintf " %s/%s" url fromEvent)
+    w.UploadString(url, "CREATE", (sprintf "%s %s" reTyp toEvent)) 
+        |> printfn "CREATE %s/%s/%s [%s] --> %s" serverName fromEvent reTyp toEvent
 
+let parse (line : string) =
+    let words = List.ofArray(line.Split [|' '|])
+    match words with
+        | "Event"::name::[]                     -> createEvent name
+        | "Relen"::event::typ::toEvent::[]      -> createRelen event typ toEvent
+        | _                                     -> failwith "prut"
 
 [<EntryPoint>]
 let main argv =
-    CreateEvent "A"
-    // relation: condition, response, exclusion or inclusion.
-    //Put "A" "condition" "http://localhost:8080/A"
+    
+    let p = new System.Diagnostics.Process()
+    p.StartInfo.FileName <- "server.exe"
+    p.StartInfo.Arguments <- (serverName)
+    p.Start() |> ignore
 
-    let rec writeNames = function
-        | [] -> ""
-        | x::xs -> x + " " + (writeNames xs)
+    parse "Event A 8081 Elev"
+    parse "Event B 8082 Elev"
+    parse "Relen A Condition B"
 
-    printfn "%s" (writeNames events)
-
-    System.Console.ReadLine()
-    printfn "Exsiting manager"
-    0
+    0 // <- skal vare der
