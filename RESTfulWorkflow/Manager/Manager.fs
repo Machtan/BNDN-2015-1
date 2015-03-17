@@ -6,8 +6,8 @@ let url = sprintf "http://localhost:%s/%s" port serverName
 let create (url : string) data =
     use w = new System.Net.WebClient ()
     if not (data = "")
-    then w.UploadString(url, "CREATE", data) |> printfn "CREATE %s [%s] --> %s" url data
-    else w.UploadString(url, "CREATE")       |> printfn "CREATE %s --> %s" url
+    then w.UploadString(url, "POST", data) |> printfn "CREATE %s [%s] --> %s" url data
+    else w.UploadString(url, "POST")       |> printfn "CREATE %s --> %s" url
 
 let parse (line : string) =
     let words = List.ofArray(line.Split [|' '|])
@@ -19,11 +19,11 @@ let parse (line : string) =
 [<EntryPoint>]
 let main argv =
     
-    (*
+    
     let p = new System.Diagnostics.Process()
     p.StartInfo.FileName <- "server.exe"
-    p.StartInfo.Arguments <- (serverName)
-    p.Start() |> ignore*)
+    p.StartInfo.Arguments <- (serverName + " " + port)
+    p.Start() |> ignore
 
     parse "Event A"
     parse "Event B"
