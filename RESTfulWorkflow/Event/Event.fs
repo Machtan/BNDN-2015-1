@@ -1,4 +1,4 @@
-module Node
+module Event
 open Workflow
 
 let split (str: string) (c: char) = List.ofArray (str.Split([|c|]))

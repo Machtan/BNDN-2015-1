@@ -4,12 +4,14 @@ type Relation =             // The internal string is a http address
     | Dependent of string   // What is enabled once a node is executed
     | Exclusion of string   // What becomes excluded once this node is executed
     | Response of string    // What becomes pending once a node is executed
+    | Inclusion of string   // What gets included once this node is executed
 
 // The record type for an event node.
 // We only really use this as the state singleton (which is nice, tho)
 type Event = {
     name: string;
     executed: bool;
+    excluded: bool;
     included: bool;
     pending: bool;
     relations: Relation list;
@@ -23,6 +25,7 @@ type Message =
     | Notify of string          // The target is notified that this is executed
                                 // Argument is(The name of this node)
     | SetExcluded               // The target node becomes excluded
+    | SetIncluded               // The target node becomes excluded
     | SetPending                // The target node becomes pending
     | AddCondition of string    // The target node is not included before this one
     | RemoveCondition of string // This node is excluded, so a condition is voided
@@ -41,6 +44,7 @@ let createEvent event state =
     let n = {
         name = event;
         executed = false;
+        excluded = false;
         included = true;
         pending = false;
         relations = [];
