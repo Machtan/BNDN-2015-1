@@ -1,4 +1,5 @@
 module Workflow
+
 // The types of relations the nodes can know of
 type Relation =             // The internal string is a http address
     | Dependent of string   // What is enabled once a node is executed

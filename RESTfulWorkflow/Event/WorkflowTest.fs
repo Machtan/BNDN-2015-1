@@ -1,3 +1,5 @@
+module test
+(*
 open Workflow
 
 [<EntryPoint>]
@@ -35,4 +37,4 @@ let main args =
         | _ -> failwith "Aww"
     showProcess s3
 
-    0
+    0*)
