@@ -1,6 +1,6 @@
 ﻿open System
 
-// --debois, Mar '15
+// HTTPREQUEST GET
 let HTTPRequestDownload (url : string) = 
     try
         let port = 8080
@@ -8,7 +8,8 @@ let HTTPRequestDownload (url : string) =
         Some(w.DownloadString(url))
     with
         | _ -> None
-
+        
+// HTTPREQUEST using a provided HTTP verb
 let HTTPRequestUpload (url : string) verb value = 
     try
         let port = 8080
@@ -17,7 +18,7 @@ let HTTPRequestUpload (url : string) verb value =
     with
         | _ -> None
         
-    
+//Mainloop, covers event selection and exchanging information with the events.    
 let rec mainLoop baseUrl =
     printfn "Actions:"
     printfn "1 -> Connect an event"
@@ -73,7 +74,7 @@ let rec mainLoop baseUrl =
                     response.Value |> printfn "Success! Response: %s" 
                 printfn "action completed"
                 mainLoop baseUrl 
-
+//Returns an url with 2 segments only if possible.
 let GetWorkFlowUrl url = 
     if (not (Uri.IsWellFormedUriString(url, UriKind.Absolute))) then
         None
@@ -82,26 +83,30 @@ let GetWorkFlowUrl url =
         | x when x.Segments.Length > 1 -> Some("http://"+ x.Host + "/" + (string (x.Segments.GetValue(1))))
         | _ -> None
 
+//Prompts the user to enter the BaseURL
 let rec SelectBaseUrl n = 
-    printfn "Please provide by url and press enter:"
+    printfn "Please provide BaseURL and press enter:"
     let baseUrl = GetWorkFlowUrl (Console.ReadLine())
     if (baseUrl.IsSome) then
         baseUrl.Value
     else
         printfn "Entered url was invalid, please try again."
         SelectBaseUrl n
-let rec outerLoop m = 
+
+//Provides the loop that allows the mainLoop to exit and rerequest the BaseURL.
+let rec OuterLoop m = 
     let baseUrl = SelectBaseUrl 0
     let m = mainLoop baseUrl
     if (m.IsSome) then
-        outerLoop m
+        OuterLoop m
 
+//Entry point
 [<EntryPoint>]
 let rec main argv = 
     printfn "Welcome to the testclient of the workflow client"
     Console.Title <- "Workflow test client"
     //http://localhost:8080/<process>/<session_id>/<event>/<attribute>
-    outerLoop None
+    OuterLoop None
     0
 
         
