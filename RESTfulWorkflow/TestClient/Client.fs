@@ -1,4 +1,5 @@
 ﻿open System
+type EventStatus = string * string * string
 
 // HTTPREQUEST GET
 let HTTPRequestDownload (url : string) = 
@@ -17,63 +18,94 @@ let HTTPRequestUpload (url : string) verb value =
         Some(w.UploadString(url,verb, value))
     with
         | _ -> None
-        
+//Get event status
+let eventStatus baseUrl eventName = 
+    let executed = HTTPRequestDownload (baseUrl + "/" + eventName + "/executed")
+    let included = HTTPRequestDownload (baseUrl + "/" + eventName + "/included")
+    let pending = HTTPRequestDownload (baseUrl + "/" + eventName + "/pending")
+    if (executed.IsNone || included.IsNone || pending.IsNone) then
+        None
+    else
+        Some((executed.Value,included.Value,pending.Value) : EventStatus)
+
+//Writes the status of each event to the console and returns a list containing only the events that was responsive.
+let rec getStatusAndRemovefaulty events baseUrl = 
+    match (events) with
+    | x :: xs -> 
+                let eventStatusResponse = eventStatus baseUrl x
+                if (eventStatusResponse.IsSome) then
+                    let (executed,included,pended) = eventStatusResponse.Value
+                    printfn "EventName: %s" x
+                    printfn "IsExecuted: %s" executed
+                    printfn "IsIncluded: %s" included
+                    printfn "IsPending: %s" pended
+                    x :: getStatusAndRemovefaulty xs baseUrl
+                else
+                    getStatusAndRemovefaulty xs baseUrl
+    | _ -> events
+
+
 //Mainloop, covers event selection and exchanging information with the events.    
-let rec mainLoop baseUrl =
+let rec mainLoop baseUrl events =
     printfn "Actions:"
     printfn "1 -> Connect an event"
     printfn "2 -> Change BaseURL"
-    printfn "3 -> Exit program"
+    printfn "3 -> View status"
+    printfn "4 -> Exit program"
     printf "-> "
     let action = Console.ReadLine()
-    if (action = "3") then
+    if (action = "4") then //Exit program
         None    
     else   
-        if (action = "2") then
+        if (action = "2") then //Change BaseURL
             Some(true)
         else
-            printfn "Please provide event name:"
-            let eventName = Console.ReadLine()
-            let executed = HTTPRequestDownload (baseUrl + "/" + eventName + "/executed")
-            let included = HTTPRequestDownload (baseUrl + "/" + eventName + "/included")
-            let pending = HTTPRequestDownload (baseUrl + "/" + eventName + "/pending")
-            if (executed.IsNone || included.IsNone || pending.IsNone) then
-                printfn "Program failed to exchange data with the event. Eventname, baseURL or connection may be at fault."
-                mainLoop baseUrl
+            if (action = "3") then //View Status
+                    printfn "Status:"
+                    mainLoop baseUrl (getStatusAndRemovefaulty events baseUrl)
             else
-                //Write out status:
-                printfn "Event status:"
-                printfn "IsExecuted: %s" executed.Value 
-                printfn "IsIncluded: %s" included.Value 
-                printfn "IsPending: %s" pending.Value 
-                printfn "Actions:"
-                printfn "1 -> Execute"
-                printfn "2 -> Include"
-                printfn "3 -> Pending"
-                printfn "4 -> Lock"
-                printfn "5 -> Exit event"
-                printf "-> "
-                let action = Console.ReadLine()
-                printfn "Executing action"
-                let mutable response = None
                 if (action = "1") then
-                    response <- HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true"
-                else
-                    if (action = "2") then
-                        response <-  HTTPRequestUpload (baseUrl + "/" + eventName + "/included") "PUT" "true"
+                    //Connect an event
+                    printfn "Please provide event name:"
+                    let eventName = Console.ReadLine()
+                    let eventStatusResponse = eventStatus baseUrl eventName
+                    if (eventStatusResponse.IsNone) then
+                        printfn "Program failed to exchange data with the event. Eventname, baseURL or connection may be at fault."
+                        mainLoop baseUrl events
                     else
-                        if (action = "3") then
-                            response <-  HTTPRequestUpload (baseUrl + "/" + eventName + "/pending") "PUT" "true"
+                        let (executed,included,pended) = eventStatusResponse.Value
+                        //Write out status:
+                        printfn "Event status:"
+                        printfn "IsExecuted: %s" executed
+                        printfn "IsIncluded: %s" included
+                        printfn "IsPending: %s" pended
+                        printfn "Actions:"
+                        printfn "1 -> Execute"
+                        printfn "2 -> Include"
+                        printfn "3 -> Pending"
+                        printfn "4 -> Exit event"
+                        printf "-> "
+                        let action = Console.ReadLine()
+                        printfn "Executing action"
+                        let mutable response = None
+                        if (action = "1") then
+                            response <- HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true"
                         else
-                            if (action = "4") then
-                                response <-  HTTPRequestUpload (baseUrl + "/" + eventName + "/locked") "PUT" "true"       
+                            if (action = "2") then
+                                response <-  HTTPRequestUpload (baseUrl + "/" + eventName + "/included") "PUT" "true"
                             else
-                                if (response.IsNone) then
-                                    printfn "Program failed to issue the command to the event. Connection may be at fault."    
-                if (response.IsSome) then 
-                    response.Value |> printfn "Success! Response: %s" 
-                printfn "action completed"
-                mainLoop baseUrl 
+                                if (action = "3") then
+                                    response <-  HTTPRequestUpload (baseUrl + "/" + eventName + "/pending") "PUT" "true"
+                                else   
+                                   if (response.IsNone) then
+                                       printfn "Program failed to issue the command to the event. Connection may be at fault."    
+                        if (response.IsSome) then 
+                            response.Value |> printfn "Success! Response: %s" 
+                        printfn "action completed"
+                        mainLoop baseUrl events
+                else
+                    None
+
 //Returns an url with 2 segments only if possible.
 let GetWorkFlowUrl url = 
     if (not (Uri.IsWellFormedUriString(url, UriKind.Absolute))) then
@@ -96,7 +128,7 @@ let rec SelectBaseUrl n =
 //Provides the loop that allows the mainLoop to exit and rerequest the BaseURL.
 let rec OuterLoop m = 
     let baseUrl = SelectBaseUrl 0
-    let m = mainLoop baseUrl
+    let m = mainLoop baseUrl []
     if (m.IsSome) then
         OuterLoop m
 
