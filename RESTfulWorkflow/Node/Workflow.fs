@@ -1,4 +1,4 @@
-module Process
+module Workflow
 // The types of relations the nodes can know of
 type Relation =             // The internal string is a http address
     | Dependent of string   // What is enabled once a node is executed
@@ -179,10 +179,8 @@ let create (event: string) (state: Process) =
     | None -> failwith "Error while adding relation (this should not happen)"
 
 // Adds a relation to an event
-let add (event: string) (relation: Relation) (state: Process) =
-    match sendMessage state [event, AddRelation relation] with
-    | Some state' -> state'
-    | None -> failwith "Error while adding relation (this should not happen)"
+let tryAdd (event: string) (relation: Relation) (state: Process) =
+    sendMessage state [event, AddRelation relation]
 
 // Attempts to execute an event
 let tryExecute (event: string) (state: Process) =

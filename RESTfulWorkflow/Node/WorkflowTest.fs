@@ -1,4 +1,4 @@
-open Process
+open Workflow
 
 [<EntryPoint>]
 let main args =

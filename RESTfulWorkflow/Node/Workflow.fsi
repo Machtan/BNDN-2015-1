@@ -1,4 +1,4 @@
-module Process
+module Workflow
 
 type Event
 type Relation =             // The internal string is a http address
@@ -7,7 +7,7 @@ type Relation =             // The internal string is a http address
     | Response of string    // What becomes pending once a node is executed
 
 val create: string -> Map<string, Event> -> Map<string, Event>
-val add: string -> Relation -> Map<string, Event> -> Map<string, Event>
+val tryAdd: string -> Relation -> Map<string, Event> -> Map<string, Event> option
 val tryExecute: string -> Map<string, Event> -> Map<string, Event> option
 val tryGet: string -> Map<string, Event> -> (bool * bool * bool) option
 val showProcess: Map<string, Event> -> unit
