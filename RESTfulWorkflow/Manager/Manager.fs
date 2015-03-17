@@ -20,18 +20,19 @@ let parse (line : string) =
     match words with
         | "Event"::name::[]                     -> createEvent name
         | "Relen"::event::typ::toEvent::[]      -> createRelen event typ toEvent
-        | _                                     -> failwith "prut"
+        | x                                     -> printfn "%s --> Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x)
 
 [<EntryPoint>]
 let main argv =
     
+    (*
     let p = new System.Diagnostics.Process()
     p.StartInfo.FileName <- "server.exe"
     p.StartInfo.Arguments <- (serverName)
-    p.Start() |> ignore
+    p.Start() |> ignore*)
 
-    parse "Event A 8081 Elev"
-    parse "Event B 8082 Elev"
+    parse "Event A"
+    parse "Event B"
     parse "Relen A Condition B"
 
     0 // <- skal vare der
