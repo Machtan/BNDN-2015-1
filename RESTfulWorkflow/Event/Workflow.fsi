@@ -5,6 +5,7 @@ type Relation =             // The internal string is a http address
     | Dependent of string   // What is enabled once a node is executed
     | Exclusion of string   // What becomes excluded once this node is executed
     | Response of string    // What becomes pending once a node is executed
+    | Inclusion of string   // What gets included once this event is executed
 
 val create: string -> Map<string, Event> -> Map<string, Event>
 val tryAdd: string -> Relation -> Map<string, Event> -> Map<string, Event> option

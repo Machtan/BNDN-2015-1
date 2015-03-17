@@ -1,12 +1,12 @@
 module Workflow
-// The types of relations the nodes can know of
+// The types of relations the events can know of
 type Relation =             // The internal string is a http address
-    | Dependent of string   // What is enabled once a node is executed
-    | Exclusion of string   // What becomes excluded once this node is executed
-    | Response of string    // What becomes pending once a node is executed
-    | Inclusion of string   // What gets included once this node is executed
+    | Dependent of string   // What is enabled once a event is executed
+    | Exclusion of string   // What becomes excluded once this event is executed
+    | Response of string    // What becomes pending once a event is executed
+    | Inclusion of string   // What gets included once this event is executed
 
-// The record type for an event node.
+// The record type for an event event.
 // We only really use this as the state singleton (which is nice, tho)
 type Event = {
     name: string;
@@ -19,26 +19,26 @@ type Event = {
     // Ex: {"register": false}
 }
 
-// The types of messages that the nodes can send
+// The types of messages that the events can send
 type Message =
     // Internal messages
     | Notify of string          // The target is notified that this is executed
-                                // Argument is(The name of this node)
-    | SetExcluded               // The target node becomes excluded
-    | SetIncluded               // The target node becomes excluded
-    | SetPending                // The target node becomes pending
-    | AddCondition of string    // The target node is not included before this one
-    | RemoveCondition of string // This node is excluded, so a condition is voided
+                                // Argument is(The name of this event)
+    | SetExcluded               // The target event becomes excluded
+    | SetIncluded               // The target event becomes excluded
+    | SetPending                // The target event becomes pending
+    | AddCondition of string    // The target event is not included before this one
+    | RemoveCondition of string // This event is excluded, so a condition is voided
 
     // External messages
-    | Execute                   // *new* tries to execute a node
-    | Create                    // *new* creates a node
+    | Execute                   // *new* tries to execute a event
+    | Create                    // *new* creates a event
     | AddRelation of Relation   // *new* adds a relation
 
 type Command = string * Message
 type Process = Map<string, Event>
 
-// Creates a new node
+// Creates a new event
 let createEvent event state =
     printfn "Creating '%s'..." event
     let n = {
@@ -52,80 +52,118 @@ let createEvent event state =
     }
     (Map.add event n state)
 
-// Adds a relation to a node
-let addRelation node relation state cmds =
-    printfn "Adding relation '%A' to '%s'..." relation node.name
-    let n = { node with relations = relation::node.relations; }
-    let state' = Map.add node.name n state
+// Adds a relation to a event
+let addRelation event relation state cmds =
+    printfn "Adding relation '%A' to '%s'..." relation event.name
+    let n = { event with relations = relation::event.relations; }
+    let state' = Map.add event.name n state
     // Notify dependents
     let cmds' =
         match relation with
-        | Dependent dep -> (dep, AddCondition node.name)::cmds
+        | Dependent dep -> (dep, AddCondition event.name)::cmds
         | _ -> cmds
     state', cmds'
 
-// Adds a condition to a node
-let addCondition node condition state =
-    printfn "Adding condition '%A' to '%s'..." condition node.name
-    let cons = Map.add condition false node.conditions
-    let n = { node with conditions = cons; included = false; }
-    (Map.add node.name n state)
+// Adds a condition to a event
+let addCondition event condition state =
+    printfn "Adding condition '%A' to '%s'..." condition event.name
+    let cons = Map.add condition false event.conditions
+    let n = { event with conditions = cons; included = false; }
+    (Map.add event.name n state)
 
-// Sets the node to be pending
-let setPending node state =
-    printfn "Setting '%s' to pending..." node.name
-    Map.add node.name { node with pending = true; } state
+// Sets the event to be pending
+let setPending event state =
+    printfn "Setting '%s' to pending..." event.name
+    Map.add event.name { event with pending = true; } state
 
-// Tells a node that a dependency has been executed
-let notifyDependent node executed state =
-    printfn "Updating dependency '%s' of '%s'..." executed node.name
-    let cons = Map.add executed true node.conditions
-    let inc = Map.forall (fun _ exec -> exec) cons
-    Map.add node.name { node with conditions = cons; included = inc; } state
+// Tells a event that a dependency has been executed
+let notifyDependent event executed state =
+    printfn "Updating dependency '%s' of '%s'..." executed event.name
+    let cons = Map.add executed true event.conditions
+    let inc = (not event.excluded) && Map.forall (fun _ exec -> exec) cons
+    Map.add event.name { event with conditions = cons; included = inc; } state
 
-// Removes a condition of a node
-let removeCondition node con state =
-    printfn "Excluding dependency '%s' of '%s'..." con node.name
-    let cons = Map.remove con node.conditions
-    let inc = Map.forall (fun _ exec -> exec) cons
-    Map.add node.name { node with conditions = cons; included = inc; } state
+// Removes a condition of a event
+let removeCondition event con state =
+    printfn "Excluding dependency '%s' of '%s'..." con event.name
+    let cons = Map.remove con event.conditions
+    let inc = (not event.excluded) && Map.forall (fun _ exec -> exec) cons
+    Map.add event.name { event with conditions = cons; included = inc; } state
 
-// Tries to execute a node
-let tryExecuteInternal node state cmds =
-    printfn "Executing '%s'..." node.name
-    if not node.included
+// Tries to execute a event
+let tryExecuteInternal event state cmds =
+    printfn "Executing '%s'..." event.name
+    if not event.included
     then
-        printfn "The node '%s' was attempted executed, but is not included!" node.name
+        printfn "The event '%s' was attempted executed, but is not included!" event.name
         None
     else
-        let node' = { node with executed = true; pending = false; }
-        let state' = Map.add node.name node' state
+        let event' = { event with executed = true; pending = false; }
+        let state' = Map.add event.name event' state
         let rec notify relations commands =
             match relations with
             | [] -> commands
             | rel::remainder ->
                 let commands' =
                     match rel with
-                    | Dependent dst -> (dst, Notify node.name)::commands
+                    | Dependent dst -> (dst, Notify event.name)::commands
                     | Exclusion dst -> (dst, SetExcluded)::commands
-                    | Response dst -> (dst, SetPending)::commands
+                    | Response  dst -> (dst, SetPending)::commands
+                    | Inclusion dst -> (dst, SetIncluded)::commands
                 notify remainder commands'
 
-        Some (state', notify node.relations cmds)
+        Some (state', notify event.relations cmds)
 
-// Sets the node to be excluded
-let setExcluded node state cmds =
-    let state' = Map.add node.name { node with included = false; } state // TODO more?
-    let rec notify relations commands =
-        match relations with
-        | [] -> commands
-        | rel::remainder ->
-            let commands' =
-                match rel with
-                | Dependent dst -> (dst, RemoveCondition node.name)::commands
-                | _ -> commands
-            notify remainder commands'
-    (state', notify node.relations cmds)
+// Sets the event to be excluded
+let setExcluded event state cmds =
+    // Don't do anything if it's already excluded
+    if event.excluded then
+        (state, cmds)
+    else
+        // Update the event
+        let event' = { event with included = false; excluded = true;}
+        let state' = Map.add event.name event' state
+
+        // Notify all relations of the change
+        let rec notify relations commands =
+            match relations with
+            | [] -> commands
+            | rel::remainder ->
+                let commands' =
+                    match rel with
+                    | Dependent dst -> (dst, RemoveCondition event.name)::commands
+                    | _ -> commands
+                notify remainder commands'
+        (state', notify event.relations cmds)
+
+// Sets the event to be included
+let setIncluded event state (cmds: Command list) =
+    // Don't do anything if it's NOT already excluded
+    if not event.excluded then
+        (state, cmds)
+    else
+        let rec notify executed relations commands =
+            match relations with
+            | [] -> commands
+            | rel::remainder ->
+                let commands' =
+                    match rel with
+                    | Dependent dst ->
+                        // If this command was previously executed,
+                        // then update to reflect this
+                        let coms =
+                            if executed then
+                                (dst, Notify event.name)::commands
+                            else
+                                commands
+                        (dst, AddCondition event.name)::coms
+                    | _ -> commands
+                notify executed remainder commands'
+
+        let inc = Map.forall (fun _ exec -> exec) event.conditions
+        let event' = { event with included = inc; excluded = false; }
+        let state' = Map.add event.name event' state
+        (state', notify event.executed event.relations cmds)
 
 // Sends a message to the simulation state
 let sendMessage (state: Process) (cmds: Command list) =
@@ -137,28 +175,30 @@ let sendMessage (state: Process) (cmds: Command list) =
                 match msg with
                 | Create -> Some (createEvent event state, remainder)
 
-                // Check whether the node exists before proceeding
+                // Check whether the event exists before proceeding
                 | _ ->
                     match Map.tryFind event state with
-                    | Some node ->
+                    | Some event ->
                         match msg with
                         | Notify executed ->
-                            Some ((notifyDependent node executed state), remainder)
+                            Some ((notifyDependent event executed state), remainder)
                         | SetExcluded ->
-                            Some (setExcluded node state remainder)
+                            Some (setExcluded event state remainder)
+                        | SetIncluded ->
+                            Some (setIncluded event state remainder)
                         | SetPending ->
-                            Some ((setPending node state), remainder)
+                            Some ((setPending event state), remainder)
                         | AddCondition con ->
-                            Some ((addCondition node con state), remainder)
+                            Some ((addCondition event con state), remainder)
                         | RemoveCondition con ->
-                            Some ((removeCondition node con state), remainder)
+                            Some ((removeCondition event con state), remainder)
                         | Execute ->
-                            (tryExecuteInternal node state remainder) // This can fail
+                            (tryExecuteInternal event state remainder) // This can fail
                         | AddRelation rel ->
-                            Some (addRelation node rel state remainder)
+                            Some (addRelation event rel state remainder)
                         | Create -> failwith "HOW DID THIS HAPPEN!?"
                     | None ->
-                        printfn "The node at '%s' does not exist! Aborting!" event
+                        printfn "The event at '%s' does not exist! Aborting!" event
                         None
             match res with
             | Some (state', cmds') -> trySend state' cmds'
@@ -168,7 +208,7 @@ let sendMessage (state: Process) (cmds: Command list) =
 
 
 // Interface: These functions below, and the 'Relation' type
-// Prints the status of all nodes in the state (sorta)
+// Prints the status of all events in the state (sorta)
 let showProcess (state: Process) =
     printfn "============= Status =============="
     Map.iter (
@@ -193,5 +233,5 @@ let tryExecute (event: string) (state: Process) =
 // Attempts to get information about an event
 let tryGet (event: string) (state: Process) =
     match Map.tryFind event state with
-    | Some node -> Some (node.executed, node.included, node.pending)
+    | Some event -> Some (event.executed, event.included, event.pending)
     | None -> None
