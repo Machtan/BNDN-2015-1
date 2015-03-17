@@ -30,8 +30,8 @@ let rec mainLoop baseUrl =
     printfn "2 -> Include"
     printfn "3 -> Pending"
     printfn "4 -> Lock"
-    printfn "5 -> Exit"
-    printfn "6 -> Exit Program"
+    printfn "5 -> Exit event"
+    printfn "6 -> Exit program"
     let action = Console.ReadLine()
     if (action = "1") then
         HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true" |> printfn "Result: %s"
@@ -63,6 +63,7 @@ let rec SelectBaseUrl n =
 
 [<EntryPoint>]
 let main argv = 
+    Console.Title <- "Workflow test client"
     let baseUrl = SelectBaseUrl 0
     mainLoop baseUrl
     0
