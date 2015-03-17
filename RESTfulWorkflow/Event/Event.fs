@@ -38,6 +38,9 @@ let setExecuted event state =
     | None -> (sprintf "'%s' could not be executed!" event), 404, "Error", state
     | Some( state' ) -> "Executed!", 200, "OK", state'
 
+let createEvent event state =
+    (sprintf "'%s' created!" event), 200, "OK", (create event state)
+
 // Adds a new relation
 let addRelation event typ dest state =
     let msg, res =
@@ -110,15 +113,17 @@ let main args =
                     reply "There is no workflow with that event here D:" 404 "Not Found" state
                 else
                     match meth, apath with
-                    | "GET", ["executed"]->
+                    | "POST", [] ->
+                        createEvent event state
+                    | "GET", ["executed"] ->
                         getExecuted event state
                     | "PUT", ["executed"] ->
                         setExecuted event state
-                    | "GET", ["pending"]->
+                    | "GET", ["pending"] ->
                         getPending event state
                     | "GET", ["included"] ->
                         getIncluded event state
-                    | "CREATE", [relation] ->
+                    | "POST", [relation] ->
                         addRelation event relation body state
                     | _ ->
                         "Unsupported operation", 404, "Not found", state
