@@ -1,6 +1,6 @@
 ﻿open System
 
-type EventStatus = string * string * string
+type EventStatus = bool * bool * bool
 
 //String split function, splits a string based on a delimiter
 let Split (s : string) (delimiter : char) = List.ofArray (s.Split(delimiter))
@@ -37,7 +37,7 @@ let eventStatus baseUrl eventName =
     if (executed.IsNone || included.IsNone || pending.IsNone) then
         None
     else
-        Some((executed.Value,included.Value,pending.Value) : EventStatus)
+        Some((Convert.ToBoolean(executed.Value),Convert.ToBoolean(included.Value),Convert.ToBoolean(pending.Value)) : EventStatus)
 
 //Writes the status of each event to the console and returns a list containing only the events that was responsive.
 let rec getStatusAndRemovefaulty events baseUrl = 
@@ -46,10 +46,14 @@ let rec getStatusAndRemovefaulty events baseUrl =
                 let eventStatusResponse = eventStatus baseUrl x
                 if (eventStatusResponse.IsSome) then
                     let (executed,included,pended) = eventStatusResponse.Value
-                    printfn "EventName: %s" x
-                    printfn "IsExecuted: %s" executed
-                    printfn "IsIncluded: %s" included
-                    printfn "IsPending: %s" pended
+                    match ((executed,included,pended)) with
+                    //| (executed,included,pended) when executed = false && included = false && pended = true -> 
+                    | (executed,included,pended) when executed = false && included = true && pended = false ->  printfn "%s   EXECUTE" x
+                    | (executed,included,pended) when executed = false && included = true && pended = true ->  printfn "!%s   EXECUTE" x
+                    | (executed,included,pended) when executed = true && included = false && pended = false ->  printfn "X%s" x
+                    | (executed,included,pended) when executed = true && included = false && pended = true ->   printfn "X%s" x
+                    | (executed,included,pended) when executed = true && included = true && pended = false ->   printfn "X%s" x
+                    | (executed,included,pended) when executed = true && included = true && pended = true ->   printfn "X%s" x
                     x :: getStatusAndRemovefaulty xs baseUrl
                 else
                     getStatusAndRemovefaulty xs baseUrl
@@ -61,7 +65,7 @@ let rec mainLoop baseUrl events =
     printfn "1 -> Get all events"
     printfn "2 -> Connect an event"
     printfn "3 -> Change BaseURL"
-    printfn "4 -> View status"
+    printfn "4 -> View tasks/status"
     printfn "5 -> Exit program"
     printf "-> "
     match(Console.ReadLine()) with
@@ -70,8 +74,8 @@ let rec mainLoop baseUrl events =
              let eventsResponse = GetAllEvents baseUrl
              if (eventsResponse.IsNone) then
                 printfn "Program failed to get a list of events. Connection may be at fault."   
-             printfn "%s downloaded." (eventsResponse.Value.Length.ToString())
-             mainLoop baseUrl (getStatusAndRemovefaulty eventsResponse.Value baseUrl)
+                printfn "%s downloaded." (eventsResponse.Value.Length.ToString())
+             mainLoop baseUrl eventsResponse.Value
     | "2" -> //Connect an event
              printfn "Please provide event name:"
              let eventName = Console.ReadLine()
@@ -83,9 +87,9 @@ let rec mainLoop baseUrl events =
                     let (executed,included,pended) = eventStatusResponse.Value
                     //Write out status:
                     printfn "Event status:"
-                    printfn "IsExecuted: %s" executed
-                    printfn "IsIncluded: %s" included
-                    printfn "IsPending: %s" pended
+                    printfn "IsExecuted: %s" (executed.ToString())
+                    printfn "IsIncluded: %s" (included.ToString())
+                    printfn "IsPending: %s" (pended.ToString())
                     printfn "Actions:"
                     printfn "1 -> Execute"
                     printfn "2 -> Include"
@@ -108,23 +112,15 @@ let rec mainLoop baseUrl events =
                     mainLoop baseUrl events
     | "3" -> Some(true) //Change BaseURL
     | "4" -> //View Status
-             printfn "Status:"
+             printfn "Task:"
              mainLoop baseUrl (getStatusAndRemovefaulty events baseUrl)
     | "5" -> None //Exit program
     | _   -> None
-
-//Returns an url with 2 segments only if possible.
-let GetWorkFlowUrl url = Some(url)
-
+    
 //Prompts the user to enter the BaseURL
-let rec SelectBaseUrl n = 
+let SelectBaseUrl n = 
     printfn "Please provide BaseURL and press enter:"
-    let baseUrl = GetWorkFlowUrl (Console.ReadLine())
-    if (baseUrl.IsSome) then
-        baseUrl.Value
-    else
-        printfn "Entered url was invalid, please try again."
-        SelectBaseUrl n
+    Console.ReadLine()
 
 //Provides the loop that allows the mainLoop to exit and rerequest the BaseURL.
 let rec OuterLoop m = 
