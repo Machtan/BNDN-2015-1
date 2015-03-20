@@ -1,11 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.30501.0
+VisualStudioVersion = 12.0.31101.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "RESTfulWorkflow", "RESTfulWorkflow\RESTfulWorkflow.fsproj", "{6D746143-B833-4E32-804B-DA4EA84CF1E6}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "TestClient", "TestClient\TestClient.fsproj", "{134551C8-15DF-4B1E-9EB2-A843602D3D96}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Client", "Client\Client.fsproj", "{134551C8-15DF-4B1E-9EB2-A843602D3D96}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Manager", "Manager\Manager.fsproj", "{8B7492E3-16FC-45F3-8C8D-C2C12E8B594B}"
 EndProject
