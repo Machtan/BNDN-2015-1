@@ -81,9 +81,9 @@ let main args =
     printfn "Listener up @ 0.0.0.0:%d" port
 
     // Set up the state
-    let state = Map.empty
+    let initialState = Map.empty
 
-    let rec loop node =
+    let rec loop state =
         let cxt      = hl.GetContext()
         let request  = cxt.Request
         let response = cxt.Response
@@ -145,7 +145,7 @@ let main args =
             //| _ -> "Path is too short", 404, "Not found", state
         reply msg status info state'
 
-    loop state |> ignore
+    loop initialState |> ignore
 
 
     // Dead code.
