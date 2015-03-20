@@ -80,7 +80,7 @@ let rec getStatusAndRemovefaulty events baseUrl =
 let rec mainLoop baseUrl (events : EventStatus list) =
     printfn "Actions:"
     printfn "1 -> Get all events"
-    printfn "2 -> Connect an event"
+    printfn "2 -> Execute an event"
     printfn "3 -> Change BaseURL"
     printfn "4 -> View tasks/status"
     printfn "5 -> Exit program"
@@ -108,24 +108,14 @@ let rec mainLoop baseUrl (events : EventStatus list) =
                     printfn "IsExecuted: %s" (executed.ToString())
                     printfn "IsIncluded: %s" (included.ToString())
                     printfn "IsPending: %s" (pended.ToString())
-                    printfn "Actions:"
-                    printfn "1 -> Execute"
-                    printfn "2 -> Include"
-                    printfn "3 -> Pending"
-                    printfn "4 -> Exit event"
-                    printf "-> "
-                    let action = Console.ReadLine()
-                    printfn "Executing action"
-                    let mutable response = None
-                    match (action) with
-                    | "1" ->  response <- HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true"
-                    | "2" ->  response <- HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true"
-                    | "3" ->  response <- HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true"
-                    | _   ->  response <- HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true"
-                    if (response.IsNone) then
-                        printfn "Program failed to issue the command to the event. Connection may be at fault."                             
-                    if (response.IsSome) then 
-                        response.Value |> printfn "Success! Response: %s" 
+                    if (executed) then
+                        printfn "Event has already been executed, so it cant be executed."                   
+                    else
+                        let response = HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true"
+                        if (response.IsNone) then
+                            printfn "Program failed to issue the command to the event. Connection may be at fault."                             
+                        if (response.IsSome) then 
+                            response.Value |> printfn "Success! Response: %s" 
                     printfn "action completed"
                     mainLoop baseUrl events
     | "3" -> Some(true) //Change BaseURL
