@@ -26,7 +26,7 @@ let parse (line : string) roles =
         | "Role"::name::[]                      -> addRole name roles;
         | "Event"::name::role::[]               ->
             if List.exists (fun x -> x = role) roles
-            then post (sprintf " %s/%s" url name) "" roles
+            then post (sprintf " %s/%s" url name) role roles
             else printfn "%s --> Do not exist" name; roles
         | "Relen"::event::typ::toEvent::[]      -> post (sprintf " %s/%s/%s" url event typ) toEvent roles
         | x                                     -> printfn "%s --> Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x); roles
@@ -67,6 +67,6 @@ let main argv =
     let roles = parse "Relen fail exclusion fail" roles
     let roles = parse "Relen fail exclusion pass" roles
 
-    System.Console.ReadLine()
+    //System.Console.ReadLine()
 
     0 // <- skal vare der
