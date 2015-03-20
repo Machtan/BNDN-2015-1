@@ -59,8 +59,8 @@ let addRelation event typ dest state =
 // Gets a list of the events in the workflow
 let getEvents state =
     let sep = " "
-    let msg = List.foldBack (fun x acc -> x + sep + acc) (getNodes state) ""
-    (if msg = "" then "" else msg.[1..]), 200, "OK", state
+    let msg = List.foldBack (fun x acc -> acc + sep + x ) (getNodes state) ""
+    (if msg = "" then "" else msg.[(sep.Length)..]), 200, "OK", state
 
 [<EntryPoint>]
 let main args =
