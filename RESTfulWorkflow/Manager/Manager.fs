@@ -3,21 +3,33 @@
 let port = "8080"
 let serverName = "Test"
 let url = sprintf "http://localhost:%s/%s" port serverName
+let roles = []
+
+// adds a new role to the workflow
+let addRole name roles =
+    if List.exists (fun x -> x = name) roles
+    then printfn "%s --> The role do alderady exist" name; roles
+    else name::roles
 
 // POST new events and ralentienships to the server
-let post (url : string) data =
+let post (url : string) data roles =
     use w = new System.Net.WebClient ()
     if not (data = "")
     then w.UploadString(url, "POST", data) |> printfn "POST %s [%s] --> %s" url data
     else w.UploadString(url, "POST")       |> printfn "POST %s --> %s" url
+    roles
 
 // parse's a string into a spisifik post to the server
-let parse (line : string) =
+let parse (line : string) roles =
     let words = List.ofArray(line.Split ' ')
     match words with
-        | "Event"::name::[]                     -> post (sprintf " %s/%s" url name) ""
-        | "Relen"::event::typ::toEvent::[]      -> post (sprintf " %s/%s/%s" url event typ) toEvent
-        | x                                     -> printfn "%s --> Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x)
+        | "Role"::name::[]                      -> addRole name roles;
+        | "Event"::name::role::[]               ->
+            if List.exists (fun x -> x = role) roles
+            then post (sprintf " %s/%s" url name) "" roles
+            else printfn "%s --> Do not exist" name; roles
+        | "Relen"::event::typ::toEvent::[]      -> post (sprintf " %s/%s/%s" url event typ) toEvent roles
+        | x                                     -> printfn "%s --> Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x); roles
 
 [<EntryPoint>]
 let main argv =
@@ -34,20 +46,23 @@ let main argv =
     p.Start() |> ignore
 
     //A test identical to the one given i the project decripion
-    parse "Event register"
-    parse "Event pass"
-    parse "Event fail"
+    let roles = parse "Role Student" []
+    let roles = parse "Role Teacher" roles
 
-    parse "Relen register exclusion register"
-    parse "Relen register condition pass"
-    parse "Relen register response pass"
-    parse "Relen register condition fail"
+    let roles = parse "Event register Student" roles
+    let roles = parse "Event pass Teacher" roles
+    let roles = parse "Event fail Teacher" roles
 
-    parse "Relen pass exclusion pass"
-    parse "Relen pass exclusion fail"
+    let roles = parse "Relen register exclusion register" roles
+    let roles = parse "Relen register condition pass" roles
+    let roles = parse "Relen register response pass" roles
+    let roles = parse "Relen register condition fail" roles
 
-    parse "Relen fail exclusion fail"
-    parse "Relen fail exclusion pass"
+    let roles = parse "Relen pass exclusion pass" roles
+    let roles = parse "Relen pass exclusion fail" roles
+
+    let roles = parse "Relen fail exclusion fail" roles
+    let roles = parse "Relen fail exclusion pass" roles
 
     System.Console.ReadLine()
 
