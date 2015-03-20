@@ -1,4 +1,5 @@
-﻿
+﻿open System.IO
+
 let port = "8080"
 let serverName = "Test"
 let url = sprintf "http://localhost:%s/%s" port serverName
@@ -20,9 +21,15 @@ let parse (line : string) =
 
 [<EntryPoint>]
 let main argv =
+
+    // Try to make and move a new event.exe, from teh Event project
+    if File.Exists("event.exe")
+    then File.Delete("event.exe")
+    File.Copy(@"..\..\..\Event\bin\Debug\Event.exe",@"Event.exe")
+
     //Starts the server form the .exe fil server form same plasments as the program
     let p = new System.Diagnostics.Process()
-    p.StartInfo.FileName <- "server.exe"
+    p.StartInfo.FileName <- "event.exe"
     p.StartInfo.Arguments <- (serverName + " " + port)
     p.Start() |> ignore
 
@@ -42,10 +49,6 @@ let main argv =
     parse "Relen fail exclusion fail"
     parse "Relen fail exclusion pass"
 
-    //test
-    use w = new System.Net.WebClient ()
-    printfn "%s" (w.DownloadString(url))
-    System.Console.ReadLine |> ignore
-
+    System.Console.ReadLine()
 
     0 // <- skal vare der
