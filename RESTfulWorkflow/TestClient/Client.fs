@@ -8,7 +8,6 @@ let Split (s : string) (delimiter : char) = List.ofArray (s.Split(delimiter))
 // HTTPREQUEST GET returns an option of None on error and a response string on success
 let HTTPRequestDownload (url : string) = 
     try
-        let port = 8080
         use w = new System.Net.WebClient () 
         Some(w.DownloadString(url))
     with
@@ -17,7 +16,6 @@ let HTTPRequestDownload (url : string) =
 // HTTPREQUEST with a given httpverb that returns an option of None on error and a response string on success
 let HTTPRequestUpload (url : string) verb value = 
     try
-        let port = 8080
         use w = new System.Net.WebClient () 
         Some(w.UploadString(url,verb, value))
     with
@@ -116,13 +114,7 @@ let rec mainLoop baseUrl events =
     | _   -> None
 
 //Returns an url with 2 segments only if possible.
-let GetWorkFlowUrl url = 
-    if (not (Uri.IsWellFormedUriString(url, UriKind.Absolute))) then
-        None
-    else
-        match ((new Uri(url))) with
-        | x when x.Segments.Length > 1 -> Some("http://"+ x.Host + "/" + (string (x.Segments.GetValue(1))))
-        | _ -> None
+let GetWorkFlowUrl url = Some(url)
 
 //Prompts the user to enter the BaseURL
 let rec SelectBaseUrl n = 
