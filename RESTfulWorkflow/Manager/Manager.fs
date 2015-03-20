@@ -35,6 +35,8 @@ let parse (line : string) roles =
 let main argv =
 
     // Try to make and move a new event.exe, from teh Event project
+    #if TARGET_MAC
+    #else
     if File.Exists("event.exe")
     then File.Delete("event.exe")
     File.Copy(@"..\..\..\Event\bin\Debug\Event.exe",@"Event.exe")
@@ -44,6 +46,7 @@ let main argv =
     p.StartInfo.FileName <- "event.exe"
     p.StartInfo.Arguments <- (serverName + " " + port)
     p.Start() |> ignore
+    #endif
 
     //A test identical to the one given i the project decripion
     let roles = parse "Role Student" []

@@ -1,0 +1,5 @@
+name = "Manager"
+main = "Manager"
+libraries = []
+[targets] # Manual dependency resolution (atm)
+Manager = []
