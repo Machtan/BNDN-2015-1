@@ -25,8 +25,7 @@ let main argv =
     // Try to make and move a new event.exe, from teh Event project
     if File.Exists("event.exe")
     then File.Delete("event.exe")
-    File.Copy(@"C:\Users\stin7054\Documents\GitHub\BNDN-2015-1\RESTfulWorkflow\Event\bin\Debug\Event.exe",@"C:\Users\stin7054\Documents\GitHub\BNDN-2015-1\RESTfulWorkflow\Event\bin\Debug\Event2.exe")
-    File.Move(@"C:\Users\stin7054\Documents\GitHub\BNDN-2015-1\RESTfulWorkflow\Event\bin\Debug\Event2.exe", @"C:\Users\stin7054\Documents\GitHub\BNDN-2015-1\RESTfulWorkflow\Manager\bin\Debug\event.exe");
+    File.Copy(@"..\..\..\Event\bin\Debug\Event.exe",@"Event.exe")
 
     //Starts the server form the .exe fil server form same plasments as the program
     let p = new System.Diagnostics.Process()
