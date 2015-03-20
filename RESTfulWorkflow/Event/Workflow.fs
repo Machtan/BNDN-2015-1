@@ -37,7 +37,7 @@ type Message =
     | AddRelation of Relation   // *new* adds a relation
 
 type Command = string * Message
-type Process = Map<string, Event>
+type Workflow = Map<string, Event>
 
 // Creates a new event
 let createEvent event state =
@@ -167,7 +167,7 @@ let setIncluded event state (cmds: Command list) =
         (state', notify event.executed event.relations cmds)
 
 // Sends a message to the simulation state
-let sendMessage (state: Process) (cmds: Command list) =
+let sendMessage (state: Workflow) (cmds: Command list) =
     let rec trySend state cmds =
         match cmds with
         | [] -> Some state
@@ -210,7 +210,7 @@ let sendMessage (state: Process) (cmds: Command list) =
 
 // Interface: These functions below, and the 'Relation' type
 // Prints the status of all events in the state (sorta)
-let showProcess (state: Process) =
+let showWorkflow (state: Workflow) =
     printfn "============= Status =============="
     Map.iter (
         fun k v ->
@@ -218,21 +218,25 @@ let showProcess (state: Process) =
     ) state
 
 // Creates a new event
-let create (event: string) (state: Process) =
+let create (event: string) (state: Workflow) =
     match sendMessage state [event, Create] with
     | Some state' -> state'
     | None -> failwith "Error while adding relation (this should not happen)"
 
 // Adds a relation to an event
-let tryAdd (event: string) (relation: Relation) (state: Process) =
+let tryAdd (event: string) (relation: Relation) (state: Workflow) =
     sendMessage state [event, AddRelation relation]
 
 // Attempts to execute an event
-let tryExecute (event: string) (state: Process) =
+let tryExecute (event: string) (state: Workflow) =
     sendMessage state [event, Execute]
 
 // Attempts to get information about an event
-let tryGet (event: string) (state: Process) =
+let tryGet (event: string) (state: Workflow) =
     match Map.tryFind event state with
     | Some event -> Some (event.executed, event.included, event.pending)
     | None -> None
+
+// Returns the status of the nodes as a string
+let getNodes (state: Workflow) =
+    Map.fold (fun keys key _ -> key::keys) [] state

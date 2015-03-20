@@ -38,6 +38,7 @@ let setExecuted event state =
     | None -> (sprintf "'%s' could not be executed!" event), 404, "Error", state
     | Some( state' ) -> "Executed!", 200, "OK", state'
 
+// Attempts to create a new event
 let createEvent event state =
     (sprintf "'%s' created!" event), 200, "OK", (create event state)
 
@@ -54,6 +55,12 @@ let addRelation event typ dest state =
     match res with
     | Some(state') -> msg, 200, "OK", state'
     | None -> msg, 404, "Error", state
+
+// Gets a list of the events in the workflow
+let getEvents state =
+    let sep = " "
+    let msg = List.foldBack (fun x acc -> x + sep + acc) (getNodes state) ""
+    (if msg = "" then "" else msg.[1..]), 200, "OK", state
 
 [<EntryPoint>]
 let main args =
@@ -105,8 +112,16 @@ let main args =
         // Split the path into parts
         let parts = split (path.[1..]) '/'
         let msg, status, info, state' =
+            //printfn "Parts: %A" parts
             match parts with
-            | [] -> "Nothing asked, nothing found.", 404, "Not found", state
+            | [] ->
+                "Nothing asked, nothing found.", 404, "Not found", state
+            | [wfevent] ->
+                //printfn "wfevent: %A" wfevent
+                if (wfevent = workflow) && (meth = "GET" ) then
+                    getEvents state
+                else
+                    reply "There is no workflow like that here D: (yet)" 404 "Not Found" state
             | wfevent::event::apath ->
                 printfn "Workflow: %s Args: %A" wfevent apath
                 if not (wfevent = workflow) then
@@ -127,7 +142,7 @@ let main args =
                         addRelation event relation body state
                     | _ ->
                         "Unsupported operation", 404, "Not found", state
-            | _ -> "Path is too short", 404, "Not found", state
+            //| _ -> "Path is too short", 404, "Not found", state
         reply msg status info state'
 
     loop state |> ignore
