@@ -45,7 +45,6 @@ let main argv =
     //test
     use w = new System.Net.WebClient ()
     printfn "%s" (w.DownloadString(url))
-    System.Console.ReadLine |> ignore
 
 
     0 // <- skal vare der
