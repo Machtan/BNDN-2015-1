@@ -1,4 +1,4 @@
-﻿module Lib
+﻿module test
 
 //From exsemplet in class
 open NUnit.Framework
