@@ -1,7 +1,8 @@
 module Event
 open Workflow
 
-let split (str: string) (c: char) = List.ofArray (str.Split([|c|]))
+let split (str: string) (c: char) =
+    List.ofArray (str.Split([|c|]))
 
 // Attempts to get an event from the workflow
 let getEvent event state =
@@ -15,32 +16,41 @@ let getEvent event state =
 let getExecuted event state =
     match getEvent event state with
     | (None, status, msg) ->
-        sprintf "Event '%s' not found" event, status, msg, state
-    | (Some(executed, _, _), status, msg) -> (string executed), status, msg, state
+        (sprintf "Event '%s' not found" event), status, msg, state
+    | (Some(executed, _, _), status, msg) ->
+        (string executed), status, msg, state
 
 // Gets the 'included' state of an event
 let getIncluded event state =
     match getEvent event state with
     | (None, status, msg) ->
-        sprintf "Event '%s' not found" event, status, msg, state
-    | (Some(_, included, _), status, msg) -> (string included), status, msg, state
+        (sprintf "Event '%s' not found" event), status, msg, state
+    | (Some(_, included, _), status, msg) ->
+        (string included), status, msg, state
 
 // Gets the 'pending' state of an event
 let getPending event state =
     match getEvent event state with
     | (None, status, msg) ->
-        sprintf "Event '%s' not found" event, status, msg, state
-    | (Some(_, _, pending), status, msg) -> (string pending), status, msg, state
+        (sprintf "Event '%s' not found" event), status, msg, state
+    | (Some(_, _, pending), status, msg) ->
+        (string pending), status, msg, state
 
 // Attempts to execute the given event
 let setExecuted event state =
     match tryExecute event state with
-    | None -> (sprintf "'%s' could not be executed!" event), 404, "Error", state
-    | Some( state' ) -> "Executed!", 200, "OK", state'
+    | None ->
+        (sprintf "'%s' could not be executed!" event), 404, "Error", state
+    | Some( state' ) ->
+        "Executed!", 200, "OK", state'
 
 // Attempts to create a new event
 let createEvent event state =
-    (sprintf "'%s' created!" event), 200, "OK", (create event state)
+    match (create event state) with
+    | None ->
+        (sprintf "Already created!"), 200, "OK", state
+    | Some state' ->
+        (sprintf "'%s' created!" event), 200, "OK", state'
 
 // Adds a new relation
 let addRelation event typ dest state =
@@ -64,7 +74,7 @@ let getEvents state =
 
 // Starts a workflow server at the given port
 let start_server workflow port =
-    let basepath = sprintf "http://localhost:%d/%s/" port workflow
+    let basepath = (sprintf "http://localhost:%d/%s/" port workflow)
 
     printfn "Starting node at %s" basepath
 
