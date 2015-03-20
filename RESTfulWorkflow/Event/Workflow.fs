@@ -11,6 +11,7 @@ type Relation =             // The internal string is a http address
 // We only really use this as the state singleton (which is nice, tho)
 type Event = {
     name: string;
+    role: string;
     executed: bool;
     excluded: bool;
     executable: bool;
@@ -32,15 +33,15 @@ type Message =
     | RemoveCondition of string // This event is excluded, so a condition is voided
 
     // External messages
-    | Execute                   // *new* tries to execute a event
-    | Create                    // *new* creates a event
+    | Execute of string         // *new* tries to execute a event as a role
+    | Create of string          // *new* creates a event executable by a role
     | AddRelation of Relation   // *new* adds a relation
 
 type Command = string * Message
 type Workflow = Map<string, Event>
 
 // Creates a new event
-let createEvent event state cmds =
+let createEvent event role state cmds =
     if Map.containsKey event state
     then
         None
@@ -48,6 +49,7 @@ let createEvent event state cmds =
         printfn "Creating '%s'..." event
         let n = {
             name = event;
+            role = role;
             executed = false;
             excluded = false;
             executable = true;
@@ -96,28 +98,34 @@ let removeCondition event con state =
     Map.add event.name { event with conditions = cons; executable = inc; } state
 
 // Tries to execute a event
-let tryExecuteInternal event state cmds =
+let tryExecuteInternal event role state cmds =
     printfn "Executing '%s'..." event.name
     if not event.executable
     then
         printfn "The event '%s' was attempted executed, but is not executable!" event.name
         None
     else
-        let event' = { event with executed = true; pending = false; }
-        let state' = Map.add event.name event' state
-        let notify relations commands =
-            Set.foldBack (
-                fun rel cmds ->
-                    let cmd =
-                        match rel with
-                        | Dependent dst -> (dst, Notify event.name)
-                        | Exclusion dst -> (dst, SetExcluded)
-                        | Response  dst -> (dst, SetPending)
-                        | Inclusion dst -> (dst, SetIncluded)
-                    cmd::cmds
-            ) relations commands
+        if event.role = role
+        then
+            let event' = { event with executed = true; pending = false; }
+            let state' = Map.add event.name event' state
+            let notify relations commands =
+                Set.foldBack (
+                    fun rel cmds ->
+                        let cmd =
+                            match rel with
+                            | Dependent dst -> (dst, Notify event.name)
+                            | Exclusion dst -> (dst, SetExcluded)
+                            | Response  dst -> (dst, SetPending)
+                            | Inclusion dst -> (dst, SetIncluded)
+                        cmd::cmds
+                ) relations commands
 
-        Some (state', notify event.relations cmds)
+            Some (state', notify event.relations cmds)
+        else
+            printfn "The role '%s' does not have permission to execute '%s'" role event.name
+            None
+
 
 // Sets the event to be excluded
 let setExcluded event state cmds =
@@ -172,7 +180,7 @@ let sendMessage (state: Workflow) (cmds: Command list) =
         | (eventname, msg)::remainder ->
             let res =
                 match msg with
-                | Create -> createEvent eventname state remainder
+                | Create role -> createEvent eventname role state remainder
 
                 // Check whether the event exists before proceeding
                 | _ ->
@@ -191,13 +199,13 @@ let sendMessage (state: Workflow) (cmds: Command list) =
                             Some ((addCondition event con state), remainder)
                         | RemoveCondition con ->
                             Some ((removeCondition event con state), remainder)
-                        | Execute ->
-                            (tryExecuteInternal event state remainder) // This can fail
+                        | Execute role ->
+                            (tryExecuteInternal event role state remainder) // This can fail
                         | AddRelation rel ->
                             Some (addRelation event rel state remainder)
-                        | Create ->
+                        | Create role ->
                             printfn "HOW DID THIS HAPPEN!?"
-                            createEvent eventname state remainder
+                            createEvent eventname role state remainder
                     | None ->
                         printfn "The event at '%s' does not exist! Aborting!" eventname
                         None
@@ -218,16 +226,16 @@ let showWorkflow (state: Workflow) =
     ) state
 
 // Creates a new event
-let create (event: string) (state: Workflow) =
-    sendMessage state [event, Create]
+let create (event: string) (role: string)( state: Workflow) =
+    sendMessage state [event, Create role]
 
 // Adds a relation to an event
 let tryAdd (event: string) (relation: Relation) (state: Workflow) =
     sendMessage state [event, AddRelation relation]
 
 // Attempts to execute an event
-let tryExecute (event: string) (state: Workflow) =
-    sendMessage state [event, Execute]
+let tryExecute (event: string) (role: string) (state: Workflow) =
+    sendMessage state [event, Execute role]
 
 // Attempts to get information about an event
 let tryGet (event: string) (state: Workflow) =
@@ -235,6 +243,7 @@ let tryGet (event: string) (state: Workflow) =
     | Some event -> Some (event.executed, event.executable, event.pending)
     | None -> None
 
-// Returns the status of the nodes as a string
-let getNodes (state: Workflow) =
+// Returns the names of the nodes as a string
+let getEventNames (role: string) (state: Workflow) =
+    let events = Map.filter (fun _ v -> v.role = role) state
     Map.fold (fun keys key _ -> key::keys) [] state

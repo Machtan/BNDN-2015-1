@@ -37,16 +37,16 @@ let getPending event state =
         (string pending), status, msg, state
 
 // Attempts to execute the given event
-let setExecuted event state =
-    match tryExecute event state with
+let setExecuted event role state =
+    match tryExecute event role state with
     | None ->
         (sprintf "'%s' could not be executed!" event), 404, "Error", state
     | Some( state' ) ->
         "Executed!", 200, "OK", state'
 
 // Attempts to create a new event
-let createEvent event state =
-    match (create event state) with
+let createEvent event role state =
+    match (create event role state) with
     | None ->
         (sprintf "Already created!"), 200, "OK", state
     | Some state' ->
@@ -67,9 +67,10 @@ let addRelation event typ dest state =
     | None -> msg, 404, "Error", state
 
 // Gets a list of the events in the workflow
-let getEvents state =
+let getEvents role state =
     let sep = " "
-    let msg = List.foldBack (fun x acc -> acc + sep + x ) (getNodes state) ""
+    let events = getEventNames role state
+    let msg = List.foldBack (fun x acc -> acc + sep + x ) events ""
     (if msg = "" then "" else msg.[(sep.Length)..]), 200, "OK", state
 
 // Starts a workflow server at the given port
@@ -123,7 +124,7 @@ let start_server workflow port =
             | [wfevent] ->
                 //printfn "wfevent: %A" wfevent
                 if (wfevent = workflow) && (meth = "GET" ) then
-                    getEvents state
+                    getEvents body state
                 else
                     reply "There is no workflow like that here D: (yet)" 404 "Not Found" state
             | wfevent::event::apath ->
@@ -133,11 +134,11 @@ let start_server workflow port =
                 else
                     match meth, apath with
                     | "POST", [] ->
-                        createEvent event state
+                        createEvent event body state
                     | "GET", ["executed"] ->
                         getExecuted event state
                     | "PUT", ["executed"] ->
-                        setExecuted event state
+                        setExecuted event body state
                     | "GET", ["pending"] ->
                         getPending event state
                     | "GET", ["included"] ->
