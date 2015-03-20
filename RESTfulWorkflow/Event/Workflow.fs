@@ -171,14 +171,14 @@ let sendMessage (state: Workflow) (cmds: Command list) =
     let rec trySend state cmds =
         match cmds with
         | [] -> Some state
-        | (event, msg)::remainder ->
+        | (eventname, msg)::remainder ->
             let res =
                 match msg with
-                | Create -> Some (createEvent event state, remainder)
+                | Create -> Some (createEvent eventname state, remainder)
 
                 // Check whether the event exists before proceeding
                 | _ ->
-                    match Map.tryFind event state with
+                    match Map.tryFind eventname state with
                     | Some event ->
                         match msg with
                         | Notify executed ->
@@ -197,9 +197,11 @@ let sendMessage (state: Workflow) (cmds: Command list) =
                             (tryExecuteInternal event state remainder) // This can fail
                         | AddRelation rel ->
                             Some (addRelation event rel state remainder)
-                        | Create -> failwith "HOW DID THIS HAPPEN!?"
+                        | Create ->
+                            printfn "HOW DID THIS HAPPEN!?"
+                            Some (createEvent eventname state, remainder)
                     | None ->
-                        printfn "The event at '%s' does not exist! Aborting!" event
+                        printfn "The event at '%s' does not exist! Aborting!" eventname
                         None
             match res with
             | Some (state', cmds') -> trySend state' cmds'
@@ -221,7 +223,9 @@ let showWorkflow (state: Workflow) =
 let create (event: string) (state: Workflow) =
     match sendMessage state [event, Create] with
     | Some state' -> state'
-    | None -> failwith "Error while adding relation (this should not happen)"
+    | None ->
+        printfn "Error while adding relation (this should not happen)"
+        state
 
 // Adds a relation to an event
 let tryAdd (event: string) (relation: Relation) (state: Workflow) =

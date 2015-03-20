@@ -62,15 +62,8 @@ let getEvents state =
     let msg = List.foldBack (fun x acc -> acc + sep + x ) (getNodes state) ""
     (if msg = "" then "" else msg.[(sep.Length)..]), 200, "OK", state
 
-[<EntryPoint>]
-let main args =
-    let workflow, port =
-        match args with
-        | [||] -> failwith "No event argument given for the node"
-        | [|n; p|] -> n, int p
-        | _ -> failwith "Too many arguments"
-
-    // CONFIG HERE!
+// Starts a workflow server at the given port
+let start_server workflow port =
     let basepath = sprintf "http://localhost:%d/%s/" port workflow
 
     printfn "Starting node at %s" basepath
@@ -83,6 +76,7 @@ let main args =
     // Set up the state
     let initialState = Map.empty
 
+    // The listener loop
     let rec loop state =
         let cxt      = hl.GetContext()
         let request  = cxt.Request
@@ -147,7 +141,11 @@ let main args =
 
     loop initialState |> ignore
 
-
-    // Dead code.
+[<EntryPoint>]
+let main args =
+    match args with
+    | [|workflow; port|] ->
+        ignore (start_server workflow (int port))
+    | _ ->
+        printfn "Usage: Event.exe <workflow> <port>"
     0
-
