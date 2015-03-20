@@ -3,7 +3,7 @@
 
 
 # Don't include mac build data :p
-fcar/fcar/target/*
+RESTfulWorkflow/*/target/
 
 #################
 ## Visual Studio

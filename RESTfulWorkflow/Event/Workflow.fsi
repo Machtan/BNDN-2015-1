@@ -7,8 +7,11 @@ type Relation =             // The internal string is a http address
     | Response of string    // What becomes pending once a node is executed
     | Inclusion of string   // What gets included once this event is executed
 
-val create: string -> Map<string, Event> -> Map<string, Event>
-val tryAdd: string -> Relation -> Map<string, Event> -> Map<string, Event> option
-val tryExecute: string -> Map<string, Event> -> Map<string, Event> option
-val tryGet: string -> Map<string, Event> -> (bool * bool * bool) option
-val showProcess: Map<string, Event> -> unit
+type Workflow = Map<string, Event>
+
+val create: string -> string -> Workflow -> Workflow option
+val tryAdd: string -> Relation -> Workflow -> Workflow option
+val tryExecute: string -> string -> Workflow -> Workflow option
+val tryGet: string -> Workflow -> (bool * bool * bool) option
+val showWorkflow: Workflow -> unit
+val getEventNames: string -> Workflow -> string list

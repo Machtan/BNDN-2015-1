@@ -1,7 +1,8 @@
 module Event
 open Workflow
 
-let split (str: string) (c: char) = List.ofArray (str.Split([|c|]))
+let split (str: string) (c: char) =
+    List.ofArray (str.Split([|c|]))
 
 // Attempts to get an event from the workflow
 let getEvent event state =
@@ -15,31 +16,41 @@ let getEvent event state =
 let getExecuted event state =
     match getEvent event state with
     | (None, status, msg) ->
-        sprintf "Event '%s' not found" event, status, msg, state
-    | (Some(executed, _, _), status, msg) -> (string executed), status, msg, state
+        (sprintf "Event '%s' not found" event), status, msg, state
+    | (Some(executed, _, _), status, msg) ->
+        (string executed), status, msg, state
 
 // Gets the 'included' state of an event
 let getIncluded event state =
     match getEvent event state with
     | (None, status, msg) ->
-        sprintf "Event '%s' not found" event, status, msg, state
-    | (Some(_, included, _), status, msg) -> (string included), status, msg, state
+        (sprintf "Event '%s' not found" event), status, msg, state
+    | (Some(_, included, _), status, msg) ->
+        (string included), status, msg, state
 
 // Gets the 'pending' state of an event
 let getPending event state =
     match getEvent event state with
     | (None, status, msg) ->
-        sprintf "Event '%s' not found" event, status, msg, state
-    | (Some(_, _, pending), status, msg) -> (string pending), status, msg, state
+        (sprintf "Event '%s' not found" event), status, msg, state
+    | (Some(_, _, pending), status, msg) ->
+        (string pending), status, msg, state
 
 // Attempts to execute the given event
-let setExecuted event state =
-    match tryExecute event state with
-    | None -> (sprintf "'%s' could not be executed!" event), 404, "Error", state
-    | Some( state' ) -> "Executed!", 200, "OK", state'
+let setExecuted event role state =
+    match tryExecute event role state with
+    | None ->
+        (sprintf "'%s' could not be executed!" event), 404, "Error", state
+    | Some( state' ) ->
+        "Executed!", 200, "OK", state'
 
-let createEvent event state =
-    (sprintf "'%s' created!" event), 200, "OK", (create event state)
+// Attempts to create a new event
+let createEvent event role state =
+    match (create event role state) with
+    | None ->
+        (sprintf "Already created!"), 200, "OK", state
+    | Some state' ->
+        (sprintf "'%s' created!" event), 200, "OK", state'
 
 // Adds a new relation
 let addRelation event typ dest state =
@@ -55,16 +66,16 @@ let addRelation event typ dest state =
     | Some(state') -> msg, 200, "OK", state'
     | None -> msg, 404, "Error", state
 
-[<EntryPoint>]
-let main args =
-    let workflow, port =
-        match args with
-        | [||] -> failwith "No event argument given for the node"
-        | [|n; p|] -> n, int p
-        | _ -> failwith "Too many arguments"
+// Gets a list of the events in the workflow
+let getEvents role state =
+    let sep = " "
+    let events = getEventNames role state
+    let msg = List.foldBack (fun x acc -> acc + sep + x ) events ""
+    (if msg = "" then "" else msg.[(sep.Length)..]), 200, "OK", state
 
-    // CONFIG HERE!
-    let basepath = sprintf "http://localhost:%d/%s/" port workflow
+// Starts a workflow server at the given port
+let start_server workflow port =
+    let basepath = (sprintf "http://localhost:%d/%s/" port workflow)
 
     printfn "Starting node at %s" basepath
 
@@ -76,6 +87,7 @@ let main args =
     // Set up the state
     let initialState = Map.empty
 
+    // The listener loop
     let rec loop state =
         let cxt      = hl.GetContext()
         let request  = cxt.Request
@@ -105,8 +117,16 @@ let main args =
         // Split the path into parts
         let parts = split (path.[1..]) '/'
         let msg, status, info, state' =
+            //printfn "Parts: %A" parts
             match parts with
-            | [] -> "Nothing asked, nothing found.", 404, "Not found", state
+            | [] ->
+                "Nothing asked, nothing found.", 404, "Not found", state
+            | [wfevent] ->
+                //printfn "wfevent: %A" wfevent
+                if (wfevent = workflow) && (meth = "GET" ) then
+                    getEvents body state
+                else
+                    reply "There is no workflow like that here D: (yet)" 404 "Not Found" state
             | wfevent::event::apath ->
                 printfn "Workflow: %s Args: %A" wfevent apath
                 if not (wfevent = workflow) then
@@ -114,11 +134,11 @@ let main args =
                 else
                     match meth, apath with
                     | "POST", [] ->
-                        createEvent event state
+                        createEvent event body state
                     | "GET", ["executed"] ->
                         getExecuted event state
                     | "PUT", ["executed"] ->
-                        setExecuted event state
+                        setExecuted event body state
                     | "GET", ["pending"] ->
                         getPending event state
                     | "GET", ["included"] ->
@@ -127,12 +147,16 @@ let main args =
                         addRelation event relation body state
                     | _ ->
                         "Unsupported operation", 404, "Not found", state
-            | _ -> "Path is too short", 404, "Not found", state
+            //| _ -> "Path is too short", 404, "Not found", state
         reply msg status info state'
 
     loop initialState |> ignore
 
-
-    // Dead code.
+[<EntryPoint>]
+let main args =
+    match args with
+    | [|workflow; port|] ->
+        ignore (start_server workflow (int port))
+    | _ ->
+        printfn "Usage: Event.exe <workflow> <port>"
     0
-
