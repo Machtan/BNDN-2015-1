@@ -45,6 +45,7 @@ let eventStatus baseUrl eventName =
     else
         Some((eventName, Convert.ToBoolean(executed.Value),Convert.ToBoolean(included.Value),Convert.ToBoolean(pending.Value)) : EventStatus)
 
+//Write out the status of a list of EventStatus
 let rec writeOutEventStatus events baseUrl =
     match (events) with
     | (eventName, executed,included,pended) :: xs -> 
