@@ -14,13 +14,13 @@ let rec addFilesToMap (files : FileInfo []) : Map<string,string> =
             | x::xs -> inner (fileMap.Add (n.ToString(),x)) (n+1) xs
         inner Map.empty 1 names
 
-// adds a new role to the workflow
+//Adds a new role to the workflow
 let addRole name roles =
     if List.exists (fun x -> x = name) roles
     then printfn "ERROR: The role (%s) do alderady exist" name; roles
     else name::roles
 
-// POST new events and ralentienships to the server
+//POST new events and relationships to the server
 let post (url : string) data roles =
     use w = new System.Net.WebClient ()
     try
@@ -34,7 +34,7 @@ let post (url : string) data roles =
             System.Console.ReadKey() |> ignore
     roles
 
-// parse's a string into a spisifik post to the server
+//Parses a string into a specific post to the server.
 let parse (line : string) roles =
     let words = List.ofArray(line.Split ' ')
     match words with
@@ -46,7 +46,7 @@ let parse (line : string) roles =
         | "Relen"::event::typ::toEvent::[]      -> post (sprintf " %s/%s/%s" url event typ) toEvent roles
         | x                                     -> printfn "ERROR: \"%s\" Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x); roles
 
-//Parse alle lines in select file or writen
+//Parse all lines in selected file or written file.
 let rec parseTxtFile fileMap =
     Map.iter (fun key filename -> printfn "%s : %s" key filename) fileMap
     printfn "Select a file or a filepath"
@@ -61,14 +61,14 @@ let rec parseTxtFile fileMap =
 [<EntryPoint>]
 let main argv =
 
-    //Try to make and move a new event.exe, from teh Event project
+    //Try to make and move a new event.exe, from the Event project
     #if TARGET_MAC
     #else
     if File.Exists("event.exe")
     then File.Delete("event.exe")
     File.Copy(@"..\..\..\Event\bin\Debug\Event.exe",@"Event.exe")
 
-    //Starts the server form the .exe fil server form same plasments as the program
+    //Starts the server form the .exe fil server from same placement as the program.
     let p = new System.Diagnostics.Process()
     p.StartInfo.FileName <- "event.exe"
     p.StartInfo.Arguments <- (serverName + " " + port)
@@ -82,7 +82,7 @@ let main argv =
 
     parseTxtFile fileMap |> ignore
 
-    printfn "All line in the file have been iterated. Exit?"
+    printfn "All lines in the file have been iterated. Exit?"
     System.Console.ReadKey() |> ignore
 
     0 // <- skal vare der
