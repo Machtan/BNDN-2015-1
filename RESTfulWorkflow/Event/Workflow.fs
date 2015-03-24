@@ -1,4 +1,5 @@
 module Workflow
+open System
 
 // The types of relations the events can know of
 type Relation =             // The internal string is a http address
@@ -12,7 +13,7 @@ type Relation =             // The internal string is a http address
 type Event = {
     name: string;
     role: string;
-    executed: bool;
+    executed: DateTime option;
     included: bool;
     executable: bool;
     pending: bool;
@@ -50,7 +51,7 @@ let createEvent event role state cmds =
         let n = {
             name = event;
             role = role;
-            executed = false;
+            executed = None;
             included = false;
             pending = false;
             executable = true;
@@ -107,7 +108,11 @@ let tryExecuteInternal event role state cmds =
     else
         if event.role = role
         then
-            let event' = { event with executed = true; pending = false; }
+            let event' = {
+                event with
+                    executed = Some DateTime.Now;
+                    pending = false;
+            }
             let state' = Map.add event.name event' state
             let notify relations commands =
                 Set.foldBack (
@@ -170,7 +175,7 @@ let setIncluded event state (cmds: Command list) =
         let inc = Map.forall (fun _ exec -> exec) event.conditions
         let event' = { event with executable = inc; included = true; }
         let state' = Map.add event.name event' state
-        (state', notify event.executed event.relations cmds)
+        (state', notify event.executed.IsSome event.relations cmds)
 
 // Sends a message to the simulation state
 let sendMessage (state: Workflow) (cmds: Command list) =
@@ -222,7 +227,7 @@ let showWorkflow (state: Workflow) =
     printfn "============= Status =============="
     Map.iter (
         fun k v ->
-            printfn "%s %s %s %s" (if v.executable then "->" else "| ") (if v.executed then "x" else " ") k (if v.pending then "!" else "")
+            printfn "%s %s %s %s" (if v.executable then "->" else "| ") (if v.executed.IsSome then "x" else " ") k (if v.pending then "!" else "")
     ) state
 
 // Creates a new event
@@ -240,7 +245,7 @@ let tryExecute (event: string) (role: string) (state: Workflow) =
 // Attempts to get information about an event
 let tryGet (event: string) (state: Workflow) =
     match Map.tryFind event state with
-    | Some event -> Some (event.executed, event.executable, event.pending)
+    | Some event -> Some (event.executed.IsSome, event.executable, event.pending)
     | None -> None
 
 // Returns the names of the nodes as a string
