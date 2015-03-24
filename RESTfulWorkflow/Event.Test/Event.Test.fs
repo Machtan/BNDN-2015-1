@@ -1,10 +1,18 @@
-(*
+﻿(*
 Thanks to Keith Nicholas and "Julian" from hubFS for this example!
   http://cs.hubfs.net/forums/thread/3938.aspx
 *)
+
 module BowlingGame.``A game of bowling``
 
 open NUnit.Framework
+
+[<Test>]
+let ``hej`` () =
+    Assert.AreEqual(2,2)
+
+
+(*
 open FsUnit
 
 let (|EndOfGame|IncompleteStrike|Strike|Normal|Other|) (l, frame) =
@@ -58,3 +66,4 @@ let ``with double strikes should add the score of the first strike to the score 
 [<Test>]
 let ``that looks like an average bowler's game should get the expected score (example game).`` () =
     scoreBowls [1;4;4;5;6;4;5;5;10;0;1;7;3;6;4;10;2;8;6] |> should equal 133
+*)
