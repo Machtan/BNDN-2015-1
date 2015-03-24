@@ -6,23 +6,26 @@ type eventStatus = string * bool * bool * bool
 let split (s : string) (delimiter : char) = List.ofArray (s.Split(delimiter))
 
 //Role
-let role = "Student"
+let mutable role = "Student"
+
+//BaseUrl
+let mutable baseUrl = "http://localhost:8080/Test"
 
 // HTTPREQUEST with a given httpverb that returns an option of None on error and a response string on success
 let HTTPRequestUpload (url : string) verb = 
     try
         use w = new System.Net.WebClient () 
-        Some(w.UploadString(url+"?role=" + role,verb, "true"))
+        Some(w.UploadString(url,verb, role))
     with
-        | _ -> None
+        | ex -> None
 
 // HTTPREQUEST GET returns an option of None on error and a response string on success
 let HTTPRequestDownload (url : string) = 
     try
         use w = new System.Net.WebClient () 
-        Some(w.DownloadString(url+"?role="+role))
+        Some(w.DownloadString(url+"?role=" + role))
     with
-        | _ -> None
+        | ex -> None
           
 //Converts a list of eventnames to a list of the EventStatus type
 let rec stringListToEventStatus eventsList =
@@ -85,15 +88,19 @@ let rec selectRole n =
     printfn "1 -> Teacher"
     printfn "2 -> Student"
     printf "-> "
-    ignore <| match(Console.ReadLine()) with
-              | "1" -> role = "Teacher"
-              | "2" -> role = "Student"
-              | _ ->   printfn "Role doesn't exist!"
-                       selectRole n
-    true
+    match(Console.ReadLine()) with
+        | "1" -> "Teacher"
+        | "2" -> "Student"
+        | _ ->   printfn "Role doesn't exist!"
+                 selectRole n
+
+//Prompts the user to enter the BaseURL
+let selectBaseUrl n = 
+    printfn "Please provide BaseURL and press enter:"
+    Console.ReadLine()
 
 //Mainloop, covers event selection and exchanging information with the events.    
-let rec mainLoop baseUrl (events : eventStatus list) =
+let rec mainLoop (events : eventStatus list) =
     printfn "Actions:"
     printfn "1 -> Get all events"
     printfn "2 -> Execute an event"
@@ -110,16 +117,16 @@ let rec mainLoop baseUrl (events : eventStatus list) =
                 printfn "Program failed to get a list of events. Connection may be at fault."  
              if (eventsResponse.IsSome) then
                 printfn "%s downloaded." (eventsResponse.Value.Length.ToString())
-                mainLoop baseUrl eventsResponse.Value
+                mainLoop eventsResponse.Value
              else                
-                mainLoop baseUrl events
+                mainLoop events
     | "2" -> //Connect an event
              printfn "Please provide event name:"
              let eventName = Console.ReadLine()
              let eventStatusResponse = eventStatus baseUrl eventName
              if (eventStatusResponse.IsNone) then
                     printfn "Program failed to exchange data with the event. Eventname, baseURL or connection may be at fault."
-                    mainLoop baseUrl events
+                    mainLoop events
              else
                     let (eventName, executed,included,pended) = eventStatusResponse.Value
                     //Write out status:
@@ -136,35 +143,32 @@ let rec mainLoop baseUrl (events : eventStatus list) =
                         if (response.IsSome) then 
                             response.Value |> printfn "Success! Response: %s" 
                     printfn "action completed"
-                    mainLoop baseUrl events
-    | "3" -> Some(true) //Change BaseURL
-    | "4" -> selectRole 0 |> ignore
-             mainLoop baseUrl events
+                    mainLoop events
+    | "3" -> baseUrl <- selectBaseUrl 0
+             Some(true) //Change BaseURL
+    | "4" -> role <- selectRole 0 //Change role
+             Some(true)
     | "5" -> //View Status
              printfn "Task:"
-             mainLoop baseUrl (getStatusAndRemovefaulty events baseUrl)
+             mainLoop (getStatusAndRemovefaulty events baseUrl)
     | "6" -> None //Exit program
     | _   -> None
 
-//Prompts the user to enter the BaseURL
-let selectBaseUrl n = 
-    printfn "Please provide BaseURL and press enter:"
-    Console.ReadLine()
  
 
 //Provides the loop that allows the mainLoop to exit and rerequest the BaseURL.
 let rec outerLoop m = 
-    let baseUrl = selectBaseUrl 0
-    ignore <| selectRole 0
-    let m = mainLoop baseUrl []
+    let m = mainLoop []
     if (m.IsSome) then
-        outerLoop m
+      outerLoop m
+            
 
 //Entry point
 [<EntryPoint>]
 let rec main argv = 
     printfn "Welcome to the testclient of the workflow client"
     Console.Title <- "Workflow test client"
+    role <- selectRole 0 //Change role
     //http://localhost:8080/<process>/<session_id>/<event>/<attribute>
     outerLoop None
     0
