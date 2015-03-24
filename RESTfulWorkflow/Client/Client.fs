@@ -5,19 +5,14 @@ type EventStatus = string * bool * bool * bool
 //String split function, splits a string based on a delimiter
 let Split (s : string) (delimiter : char) = List.ofArray (s.Split(delimiter))
 
-// HTTPREQUEST GET returns an option of None on error and a response string on success
-let HTTPRequestDownload (url : string) = 
-    try
-        use w = new System.Net.WebClient () 
-        Some(w.DownloadString(url))
-    with
-        | _ -> None
-        
+//Role
+let role = "Client"
+
 // HTTPREQUEST with a given httpverb that returns an option of None on error and a response string on success
 let HTTPRequestUpload (url : string) verb value = 
     try
         use w = new System.Net.WebClient () 
-        Some(w.UploadString(url,verb, value))
+        Some(w.UploadString(url,verb, (role + "," + value)))
     with
         | _ -> None
         
@@ -29,7 +24,7 @@ let rec StringListToEventStatus eventsList =
 
 //Returns a list of event names with ' ' as delimiter
 let GetAllEvents baseUrl =
-    let eventsResponse = HTTPRequestDownload (baseUrl)
+    let eventsResponse = HTTPRequestUpload baseUrl "GET" ""
     if (eventsResponse.IsNone) then
         None
     else
@@ -37,9 +32,9 @@ let GetAllEvents baseUrl =
 
 //Gets the status of a particular event
 let eventStatus baseUrl eventName = 
-    let executed = HTTPRequestDownload (baseUrl + "/" + eventName + "/executed")
-    let included = HTTPRequestDownload (baseUrl + "/" + eventName + "/included")
-    let pending = HTTPRequestDownload (baseUrl + "/" + eventName + "/pending")
+    let executed = HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "GET" ""
+    let included = HTTPRequestUpload (baseUrl + "/" + eventName + "/included") "GET" ""
+    let pending = HTTPRequestUpload (baseUrl + "/" + eventName + "/pending") "GET" ""
     if (executed.IsNone || included.IsNone || pending.IsNone) then
         None
     else
