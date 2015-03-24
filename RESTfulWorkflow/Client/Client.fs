@@ -12,7 +12,7 @@ let role = "Client"
 let HTTPRequestUpload (url : string) verb = 
     try
         use w = new System.Net.WebClient () 
-        Some(w.UploadString(url+"?role="+role,verb, "true"))
+        Some(w.UploadString(url+"?role=" + role,verb, "true"))
     with
         | _ -> None
 
