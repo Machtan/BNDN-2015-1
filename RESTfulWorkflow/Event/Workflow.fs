@@ -226,7 +226,7 @@ let showWorkflow (state: Workflow) =
     ) state
 
 // Creates a new event
-let create (event: string) (role: string)( state: Workflow) =
+let tryCreate (event: string) (role: string)( state: Workflow) =
     sendMessage state [event, Create role]
 
 // Adds a relation to an event

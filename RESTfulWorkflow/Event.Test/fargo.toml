@@ -1,0 +1,22 @@
+name = "fuchutest"
+main = "fuchutest"
+type = "test"
+authors = ["Jakob Lautrup Nysom"]
+libraries = [
+    "FsUnit.NUnit",
+    "nunit.framework",
+    "nunit.core",
+    "nunit.util",
+    "nunit.core.interfaces",
+    "Fuchu"
+]
+
+includes = [
+    "FsUnit.1.3.0.1/Lib/Net40",
+    "NUnit.2.6.4/lib",
+    "NUnitTestAdapter.1.2/lib",
+    "Fuchu.0.4.0.0/lib"
+]
+
+[targets] # Manual dependency resolution (atm)
+fuchutest = ["Fuchu"]

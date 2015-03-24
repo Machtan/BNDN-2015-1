@@ -46,7 +46,7 @@ let setExecuted event role state =
 
 // Attempts to create a new event
 let createEvent event role state =
-    match (create event role state) with
+    match (tryCreate event role state) with
     | None ->
         (sprintf "Already created!"), 200, "OK", state
     | Some state' ->

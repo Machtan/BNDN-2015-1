@@ -9,7 +9,7 @@ type Relation =             // The internal string is a http address
 
 type Workflow = Map<string, Event>
 
-val create: string -> string -> Workflow -> Workflow option
+val tryCreate: string -> string -> Workflow -> Workflow option
 val tryAdd: string -> Relation -> Workflow -> Workflow option
 val tryExecute: string -> string -> Workflow -> Workflow option
 val tryGet: string -> Workflow -> (bool * bool * bool) option
