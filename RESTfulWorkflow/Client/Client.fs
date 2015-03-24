@@ -9,13 +9,21 @@ let split (s : string) (delimiter : char) = List.ofArray (s.Split(delimiter))
 let role = "Client"
 
 // HTTPREQUEST with a given httpverb that returns an option of None on error and a response string on success
-let HTTPRequestUpload (url : string) verb value = 
+let HTTPRequestUpload (url : string) verb = 
     try
         use w = new System.Net.WebClient () 
-        Some(w.UploadString(url,verb, (role + "," + value)))
+        Some(w.UploadString(url+"?role="+role,verb, "true"))
     with
         | _ -> None
-        
+
+// HTTPREQUEST GET returns an option of None on error and a response string on success
+let HTTPRequestDownload (url : string) = 
+    try
+        use w = new System.Net.WebClient () 
+        Some(w.DownloadString(url+"?role="+role))
+    with
+        | _ -> None
+          
 //Converts a list of eventnames to a list of the EventStatus type
 let rec stringListToEventStatus eventsList =
     match (eventsList) with
@@ -24,7 +32,7 @@ let rec stringListToEventStatus eventsList =
 
 //Returns a list of event names with ' ' as delimiter
 let GetAllEvents baseUrl =
-    let eventsResponse = HTTPRequestUpload baseUrl "GET" ""
+    let eventsResponse = HTTPRequestDownload baseUrl
     if (eventsResponse.IsNone) then
         None
     else
@@ -32,9 +40,9 @@ let GetAllEvents baseUrl =
 
 //Gets the status of a particular event
 let eventStatus baseUrl eventName = 
-    let executed = HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "GET" ""
-    let included = HTTPRequestUpload (baseUrl + "/" + eventName + "/included") "GET" ""
-    let pending = HTTPRequestUpload (baseUrl + "/" + eventName + "/pending") "GET" ""
+    let executed = HTTPRequestDownload (baseUrl + "/" + eventName + "/executed")
+    let included = HTTPRequestDownload (baseUrl + "/" + eventName + "/included")
+    let pending = HTTPRequestDownload (baseUrl + "/" + eventName + "/pending")
     if (executed.IsNone || included.IsNone || pending.IsNone) then
         None
     else
@@ -85,10 +93,12 @@ let rec mainLoop baseUrl (events : eventStatus list) =
              printfn "Downloading the list of events..."
              let eventsResponse = GetAllEvents baseUrl
              if (eventsResponse.IsNone) then
-                printfn "Program failed to get a list of events. Connection may be at fault."   
+                printfn "Program failed to get a list of events. Connection may be at fault."  
              if (eventsResponse.IsSome) then
                 printfn "%s downloaded." (eventsResponse.Value.Length.ToString())
-             mainLoop baseUrl eventsResponse.Value
+                mainLoop baseUrl eventsResponse.Value
+             else                
+                mainLoop baseUrl events
     | "2" -> //Connect an event
              printfn "Please provide event name:"
              let eventName = Console.ReadLine()
@@ -106,7 +116,7 @@ let rec mainLoop baseUrl (events : eventStatus list) =
                     if (executed) then
                         printfn "Event has already been executed, so it cant be executed."                   
                     else
-                        let response = HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT" "true"
+                        let response = HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT"
                         if (response.IsNone) then
                             printfn "Program failed to issue the command to the event. Connection may be at fault."                             
                         if (response.IsSome) then 
