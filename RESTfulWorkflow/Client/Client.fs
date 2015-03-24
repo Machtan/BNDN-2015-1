@@ -6,7 +6,7 @@ type eventStatus = string * bool * bool * bool
 let split (s : string) (delimiter : char) = List.ofArray (s.Split(delimiter))
 
 //Role
-let role = "Client"
+let role = "Student"
 
 // HTTPREQUEST with a given httpverb that returns an option of None on error and a response string on success
 let HTTPRequestUpload (url : string) verb = 
@@ -78,6 +78,19 @@ let rec getStatusAndRemovefaulty events baseUrl =
             | _ -> []
     writeOutEventStatus (List.sortBy (fun k -> let (eventName, executed,included,pended) = k
                                                not pended) (getValidEvents events)) baseUrl
+//Prompts the user to enter the BaseURL
+let rec selectRole n = 
+    printfn "Whats your role?"
+    printfn "Actions:"
+    printfn "1 -> Teacher"
+    printfn "2 -> Student"
+    printf "-> "
+    ignore <| match(Console.ReadLine()) with
+              | "1" -> role = "Teacher"
+              | "2" -> role = "Student"
+              | _ ->   printfn "Role doesn't exist!"
+                       selectRole n
+    true
 
 //Mainloop, covers event selection and exchanging information with the events.    
 let rec mainLoop baseUrl (events : eventStatus list) =
@@ -85,8 +98,9 @@ let rec mainLoop baseUrl (events : eventStatus list) =
     printfn "1 -> Get all events"
     printfn "2 -> Execute an event"
     printfn "3 -> Change BaseURL"
-    printfn "4 -> View tasks/status"
-    printfn "5 -> Exit program"
+    printfn "4 -> Change Role"
+    printfn "5 -> View tasks/status"
+    printfn "6 -> Exit program"
     printf "-> "
     match(Console.ReadLine()) with
     | "1" -> //Get all events
@@ -124,23 +138,27 @@ let rec mainLoop baseUrl (events : eventStatus list) =
                     printfn "action completed"
                     mainLoop baseUrl events
     | "3" -> Some(true) //Change BaseURL
-    | "4" -> //View Status
+    | "4" -> selectRole 0 |> ignore
+             mainLoop baseUrl events
+    | "5" -> //View Status
              printfn "Task:"
              mainLoop baseUrl (getStatusAndRemovefaulty events baseUrl)
-    | "5" -> None //Exit program
+    | "6" -> None //Exit program
     | _   -> None
-    
+
 //Prompts the user to enter the BaseURL
-let SelectBaseUrl n = 
+let selectBaseUrl n = 
     printfn "Please provide BaseURL and press enter:"
     Console.ReadLine()
+ 
 
 //Provides the loop that allows the mainLoop to exit and rerequest the BaseURL.
-let rec OuterLoop m = 
-    let baseUrl = SelectBaseUrl 0
+let rec outerLoop m = 
+    let baseUrl = selectBaseUrl 0
+    ignore <| selectRole 0
     let m = mainLoop baseUrl []
     if (m.IsSome) then
-        OuterLoop m
+        outerLoop m
 
 //Entry point
 [<EntryPoint>]
@@ -148,7 +166,7 @@ let rec main argv =
     printfn "Welcome to the testclient of the workflow client"
     Console.Title <- "Workflow test client"
     //http://localhost:8080/<process>/<session_id>/<event>/<attribute>
-    OuterLoop None
+    outerLoop None
     0
 
         
