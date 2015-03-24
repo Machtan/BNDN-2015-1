@@ -13,7 +13,7 @@ type Event = {
     name: string;
     role: string;
     executed: bool;
-    excluded: bool;
+    included: bool;
     executable: bool;
     pending: bool;
     relations: Set<Relation>;
@@ -27,7 +27,7 @@ type Message =
     | Notify of string          // The target is notified that this is executed
                                 // Argument is(The name of this event)
     | SetExcluded               // The target event becomes excluded
-    | SetIncluded               // The target event becomes excluded
+    | SetIncluded               // The target event becomes included
     | SetPending                // The target event becomes pending
     | AddCondition of string    // The target event is not executable before this one
     | RemoveCondition of string // This event is excluded, so a condition is voided
@@ -51,9 +51,9 @@ let createEvent event role state cmds =
             name = event;
             role = role;
             executed = false;
-            excluded = false;
-            executable = true;
+            included = false;
             pending = false;
+            executable = true;
             relations = Set.empty;
             conditions = Map.empty;
         }
@@ -87,14 +87,14 @@ let setPending event state =
 let notifyDependent event executed state =
     printfn "Updating dependency '%s' of '%s'..." executed event.name
     let cons = Map.add executed true event.conditions
-    let inc = (not event.excluded) && Map.forall (fun _ exec -> exec) cons
+    let inc = (event.included) && Map.forall (fun _ exec -> exec) cons
     Map.add event.name { event with conditions = cons; executable = inc; } state
 
 // Removes a condition of a event
 let removeCondition event con state =
     printfn "Excluding dependency '%s' of '%s'..." con event.name
     let cons = Map.remove con event.conditions
-    let inc = (not event.excluded) && Map.forall (fun _ exec -> exec) cons
+    let inc = (event.included) && Map.forall (fun _ exec -> exec) cons
     Map.add event.name { event with conditions = cons; executable = inc; } state
 
 // Tries to execute a event
@@ -129,12 +129,12 @@ let tryExecuteInternal event role state cmds =
 
 // Sets the event to be excluded
 let setExcluded event state cmds =
-    // Don't do anything if it's already excluded
-    if event.excluded then
+    // Don't do anything if it's already included
+    if  not event.included then
         (state, cmds)
     else
         // Update the event
-        let event' = { event with executable = false; excluded = true;}
+        let event' = { event with executable = false; included = false;}
         let state' = Map.add event.name event' state
 
         // Notify all relations of the change
@@ -150,8 +150,8 @@ let setExcluded event state cmds =
 
 // Sets the event to be executable
 let setIncluded event state (cmds: Command list) =
-    // Don't do anything if it's NOT already excluded
-    if not event.excluded then
+    // Don't do anything if it's already included
+    if event.included then
         (state, cmds)
     else
         let rec notify executed relations commands =
@@ -168,7 +168,7 @@ let setIncluded event state (cmds: Command list) =
             ) relations commands
 
         let inc = Map.forall (fun _ exec -> exec) event.conditions
-        let event' = { event with executable = inc; excluded = false; }
+        let event' = { event with executable = inc; included = true; }
         let state' = Map.add event.name event' state
         (state', notify event.executed event.relations cmds)
 
@@ -246,4 +246,4 @@ let tryGet (event: string) (state: Workflow) =
 // Returns the names of the nodes as a string
 let getEventNames (role: string) (state: Workflow) =
     let events = Map.filter (fun _ v -> v.role = role) state
-    Map.fold (fun keys key _ -> key::keys) [] state
+    Map.fold (fun keys key _ -> key::keys) [] events

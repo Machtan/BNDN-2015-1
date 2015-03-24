@@ -59,8 +59,7 @@ let addRelation event typ dest state =
         | "exclusion" -> "Added!", tryAdd event (Exclusion dest) state
         | "condition" -> "Added!", tryAdd event (Dependent dest) state
         | "response" -> "Added!", tryAdd event (Response dest) state
-        // TODO IMPLEMENT
-        | "include" -> "Not implemented, sorry...", None
+        | "include" -> "Added!", tryAdd event (Inclusion dest) state
         | _ -> "Could not find this relation type", None
     match res with
     | Some(state') -> msg, 200, "OK", state'
@@ -93,7 +92,8 @@ let start_server workflow port =
         let request  = cxt.Request
         let response = cxt.Response
         let meth     = request.HttpMethod
-        let path     = request.RawUrl
+        let args     = request.QueryString
+        let path     = request.Url.AbsolutePath
         let rip      = request.RemoteEndPoint.Address
         let rport    = request.RemoteEndPoint.Port
         let body =
@@ -122,9 +122,11 @@ let start_server workflow port =
             | [] ->
                 "Nothing asked, nothing found.", 404, "Not found", state
             | [wfevent] ->
-                //printfn "wfevent: %A" wfevent
+                printfn "wfevent: %A + %A" wfevent args
+                let role = args.Get "role"
+                printfn "role: %s" role
                 if (wfevent = workflow) && (meth = "GET" ) then
-                    getEvents body state
+                    getEvents role state
                 else
                     reply "There is no workflow like that here D: (yet)" 404 "Not Found" state
             | wfevent::event::apath ->

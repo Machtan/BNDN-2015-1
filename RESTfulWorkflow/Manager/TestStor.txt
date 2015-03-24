@@ -1,0 +1,29 @@
+Role Student
+Role Teacher
+Event register Student
+Event pass Teacher
+Event fail Teacher
+Relen register exclusion register
+Relen register condition pass
+Relen register response pass
+Relen register condition fail
+Relen pass exclusion pass
+Relen pass exclusion fail
+Relen fail exclusion fail
+Relen fail exclusion pass
+Event handin Student
+Event approve Teacher
+Event disapprove Teacher
+Relen handin exclusion handin
+Relen handin condition approve
+Relen handin response approve
+Relen handin include approve
+Relen handin condition disapprove
+Relen handin include disapprove
+Relen approve exclusion approve
+Relen approve exclusion disapprove
+Relen approve condition pass
+Relen disapprove exclusion disapprove
+Relen disapprove exclusion approve
+Relen disapprove include handin
+Relen disapprove response handin
