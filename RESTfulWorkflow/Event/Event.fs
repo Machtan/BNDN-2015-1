@@ -1,4 +1,4 @@
-module Event
+module EventTing
 open Workflow
 
 let split (str: string) (c: char) =

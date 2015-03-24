@@ -71,9 +71,9 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Client\Client.fsproj">
-      <Name>Client</Name>
-      <Project>{134551c8-15df-4b1e-9eb2-a843602d3d96}</Project>
+    <ProjectReference Include="..\Event\Event.fsproj">
+      <Name>Event</Name>
+      <Project>{b7a1f184-0a88-40a3-89f2-840a4f75519b}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>
