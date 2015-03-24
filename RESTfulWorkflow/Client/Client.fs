@@ -1,9 +1,9 @@
 ﻿open System
 
-type EventStatus = string * bool * bool * bool
+type eventStatus = string * bool * bool * bool
 
 //String split function, splits a string based on a delimiter
-let Split (s : string) (delimiter : char) = List.ofArray (s.Split(delimiter))
+let split (s : string) (delimiter : char) = List.ofArray (s.Split(delimiter))
 
 //Role
 let role = "Client"
@@ -17,9 +17,9 @@ let HTTPRequestUpload (url : string) verb value =
         | _ -> None
         
 //Converts a list of eventnames to a list of the EventStatus type
-let rec StringListToEventStatus eventsList =
+let rec stringListToEventStatus eventsList =
     match (eventsList) with
-    | x::xs -> (x,false,false,false) :: StringListToEventStatus xs
+    | x::xs -> (x,false,false,false) :: stringListToEventStatus xs
     | xs -> []
 
 //Returns a list of event names with ' ' as delimiter
@@ -28,7 +28,7 @@ let GetAllEvents baseUrl =
     if (eventsResponse.IsNone) then
         None
     else
-        Some(StringListToEventStatus(Split(eventsResponse.Value) ' '))
+        Some(stringListToEventStatus(split(eventsResponse.Value) ' '))
 
 //Gets the status of a particular event
 let eventStatus baseUrl eventName = 
@@ -38,7 +38,7 @@ let eventStatus baseUrl eventName =
     if (executed.IsNone || included.IsNone || pending.IsNone) then
         None
     else
-        Some((eventName, Convert.ToBoolean(executed.Value),Convert.ToBoolean(included.Value),Convert.ToBoolean(pending.Value)) : EventStatus)
+        Some((eventName, Convert.ToBoolean(executed.Value),Convert.ToBoolean(included.Value),Convert.ToBoolean(pending.Value)) : eventStatus)
 
 //Write out the status of a list of EventStatus
 let rec writeOutEventStatus events baseUrl =
@@ -72,7 +72,7 @@ let rec getStatusAndRemovefaulty events baseUrl =
                                                not pended) (getValidEvents events)) baseUrl
 
 //Mainloop, covers event selection and exchanging information with the events.    
-let rec mainLoop baseUrl (events : EventStatus list) =
+let rec mainLoop baseUrl (events : eventStatus list) =
     printfn "Actions:"
     printfn "1 -> Get all events"
     printfn "2 -> Execute an event"
