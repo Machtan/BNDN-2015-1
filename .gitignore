@@ -4,6 +4,10 @@
 
 # Don't include mac build data :p
 RESTfulWorkflow/*/target/
+RESTfulWorkflow/Event.Test/FsUnit.*/
+RESTfulWorkflow/Event.Test/NUnit.*/
+RESTfulWorkflow/Event.Test/Fuchu.*/
+RESTfulWorkflow/Event.Test/NUnitTestAdapter.*/
 
 #################
 ## Visual Studio
