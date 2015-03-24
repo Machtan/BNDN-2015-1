@@ -5,24 +5,24 @@ open System.IO
 
 let mutable p = new System.Diagnostics.Process()
 
-let testHelpGET eventPath =
+let testHelpGET eventPath (expected : bool)=
     use w = new System.Net.WebClient ()
     let s = w.DownloadString(sprintf "http://localhost:8080/Test/%s" eventPath)
-    System.Console.WriteLine("http://localhost:8080/Test/{0} --> {1}", eventPath, s)
-    s
+    System.Console.WriteLine("/{0} --> {1}, Expected: {2}", eventPath, s, expected.ToString())
+    Assert.AreEqual(expected.ToString(),s)
 
 let testHelpPUT eventPath role =
     use w = new System.Net.WebClient ()
     try
         ignore <| w.UploadString(sprintf "http://localhost:8080/Test/%s" eventPath, "PUT" , role)
     with
-            | x -> 0 |> ignore
+        | x -> 0 |> ignore
 
 [<TestFixture>]
 type public Test() =
 
     [<SetUp>]
-    member public x.``run before test``() =
+    member public x.``run before each test``() =
         if File.Exists("event.exe")
         then File.Delete("event.exe")
         File.Copy(@"..\..\..\Event\bin\Debug\Event.exe",@"Event.exe")
@@ -56,55 +56,70 @@ type public Test() =
         //  [4]     [5]
         
     [<TearDown>]
-    member public x.``run after test``() =
+    member public x.``run after each test``() =
         p.CloseMainWindow() |> ignore
 
     [<Test>]
     member public x.``Test's if a event can be executed`` () =
-        // Arrange
-        use w = new System.Net.WebClient ()
-
-        // Act
-        let result1 = testHelpGET "Event1/executed"
+        testHelpGET "Event1/executed" false
         testHelpPUT "Event1/executed" "TestClient"
-        let result2 = testHelpGET "Event1/executed"
-
-        // Assert
-        Assert.AreEqual("False",result1)
-        Assert.AreEqual("True",result2)
+        testHelpGET "Event1/executed" true
 
     [<Test>]
     member public x.``Test's exclusion inhipets execution`` () =
-        // Arrange
-        use w = new System.Net.WebClient ()
-
-        // Act
-        let result1 = testHelpGET "Event2/executed"
+        testHelpGET "Event2/executed" false
         testHelpPUT "Event1/executed" "TestClient"
         testHelpPUT "Event2/executed" "TestClient"
-        let result2 = testHelpGET "Event2/executed"
-
-        // Assert
-        Assert.AreEqual("False",result1)
-        Assert.AreEqual("False",result2)
+        testHelpGET "Event2/executed" false
 
     [<Test>]
     member public x.``Test's condition inhipets execution`` () =
-        // Arrange
-        use w = new System.Net.WebClient ()
-
-        // Act
-        let result1 = testHelpGET "Event3/executed"
+        testHelpGET "Event3/executed" false
         testHelpPUT "Event3/executed" "TestClient"
-        let result2 = testHelpGET "Event3/executed"
+        testHelpGET "Event3/executed" false
         testHelpPUT "Event1/executed" "TestClient"
-        let result3 = testHelpGET "Event3/executed"
+        testHelpGET "Event3/executed" false
         testHelpPUT "Event3/executed" "TestClient"
-        let result4 = testHelpGET "Event3/executed"
-        
+        testHelpGET "Event3/executed" true
 
-        // Assert
-        Assert.AreEqual("False",result1)
-        Assert.AreEqual("False",result2)
-        Assert.AreEqual("False",result3)
-        Assert.AreEqual("True",result4)
+    [<Test>]
+    member public x.``Test's response relation set the response value when executed`` () =
+        testHelpGET "Event5/pending" false
+        testHelpPUT "Event1/executed" "TestClient"
+        testHelpGET "Event5/pending" true
+        testHelpPUT "Event5/executed" "TestClient"
+        testHelpGET "Event5/pending" false
+
+    [<Test>]
+    member public x.``Test's if a event can be pending after it's executed`` () =
+        testHelpGET "Event5/pending" false
+        testHelpPUT "Event5/executed" "TestClient"
+        testHelpGET "Event5/pending" false
+        testHelpGET "Event5/executed" true
+        testHelpPUT "Event1/executed" "TestClient"
+        testHelpGET "Event5/pending" true
+
+    [<Test>]
+    member public x.``Test's include relation include a event`` () =
+        testHelpGET "Event2/included" true
+        testHelpPUT "Event1/executed" "TestClient"
+        testHelpGET "Event2/included" false
+        testHelpPUT "Event4/executed" "TestClient"
+        testHelpGET "Event2/included" true
+
+    [<Test>]
+    member public x.``Test's include, exclusion and condition together`` () =
+        testHelpGET "Event3/executed" false
+        testHelpGET "Event2/included" true
+        testHelpPUT "Event3/executed" "TestClient"
+        testHelpPUT "Event1/executed" "TestClient"
+        testHelpGET "Event3/executed" false
+        testHelpGET "Event2/included" false
+        testHelpPUT "Event4/executed" "TestClient"
+        testHelpPUT "Event3/executed" "TestClient"
+        testHelpGET "Event3/executed" false
+        testHelpGET "Event2/included" true
+        testHelpPUT "Event2/executed" "TestClient"
+        testHelpPUT "Event3/executed" "TestClient"
+        testHelpGET "Event3/executed" true
+        testHelpGET "Event2/executed" true
