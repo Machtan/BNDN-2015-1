@@ -5,18 +5,33 @@ let serverName = "Test"
 let url = sprintf "http://localhost:%s/%s" port serverName
 let roles = []
 
+//Put all given files names in a map
+let rec addFilesToMap (files : FileInfo []) : Map<string,string> =
+        let names = Array.fold (fun names' (x : FileInfo) -> (x.Name)::names') [] files
+        let rec inner fileMap n filesName : Map<string,string> =
+            match filesName with
+            | []    -> fileMap
+            | x::xs -> inner (fileMap.Add (n.ToString(),x)) (n+1) xs
+        inner Map.empty 1 names
+
 // adds a new role to the workflow
 let addRole name roles =
     if List.exists (fun x -> x = name) roles
-    then printfn "%s --> The role do alderady exist" name; roles
+    then printfn "ERROR: The role (%s) do alderady exist" name; roles
     else name::roles
 
 // POST new events and ralentienships to the server
 let post (url : string) data roles =
     use w = new System.Net.WebClient ()
-    if not (data = "")
-    then w.UploadString(url, "POST", data) |> printfn "POST %s [%s] --> %s" url data
-    else w.UploadString(url, "POST")       |> printfn "POST %s --> %s" url
+    try
+        if not (data = "")
+        then w.UploadString(url, "POST", data) |> printfn "POST %s [%s] --> %s" url data
+        else w.UploadString(url, "POST")       |> printfn "POST %s --> %s" url
+    with
+        | x -> 
+            printfn "POST %s [%s] --> \n%s" url data x.Message
+            printfn "ERROR: The workflow can not be completed. continue?"
+            System.Console.ReadKey() |> ignore
     roles
 
 // parse's a string into a spisifik post to the server
@@ -27,21 +42,26 @@ let parse (line : string) roles =
         | "Event"::name::role::[]               ->
             if List.exists (fun x -> x = role) roles
             then post (sprintf " %s/%s" url name) role roles
-            else printfn "%s --> Do not exist" name; roles
+            else printfn "ERROR: The role \"%s\" do not exist" role; roles
         | "Relen"::event::typ::toEvent::[]      -> post (sprintf " %s/%s/%s" url event typ) toEvent roles
-        | x                                     -> printfn "%s --> Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x); roles
+        | x                                     -> printfn "ERROR: \"%s\" Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x); roles
 
-//Her kan vi iterere gennem arrayet med linjer fra text filen.
-//File.ReadAllLines("test.txt") |> Array.iteri (fun i line -> printfn "%d> %s" (i + 1) line) //Reads each line into an array. Thereafter iterates through the list and prints each line.
-
-//Atleast i tried lal.
-//File.ReadAllLines("test.txt") |> Array.iteri (fun i line -> parse"(i + 1) line")  //Tænker det er noget i denne retning der skal bruges.
-
+//Parse alle lines in select file or writen
+let rec parseTxtFile fileMap =
+    Map.iter (fun key filename -> printfn "%s : %s" key filename) fileMap
+    printfn "Select a file or a filepath"
+    let filename = System.Console.ReadLine()
+    let filename =  match fileMap.TryFind filename with
+                    | None          -> filename
+                    | Some(name)    -> name
+    if File.Exists(filename)
+    then File.ReadAllLines(filename) |> List.ofArray |> List.fold (fun roles line -> parse line roles) []
+    else printfn "ERROR: Could not find file"; parseTxtFile fileMap
 
 [<EntryPoint>]
 let main argv =
 
-    // Try to make and move a new event.exe, from teh Event project
+    //Try to make and move a new event.exe, from teh Event project
     #if TARGET_MAC
     #else
     if File.Exists("event.exe")
@@ -55,25 +75,14 @@ let main argv =
     p.Start() |> ignore
     #endif
 
-    //A test identical to the one given i the project decripion
-    let roles = parse "Role Student" []
-    let roles = parse "Role Teacher" roles
+    //Find a list of alle available txt files
+    let dir = new DirectoryInfo(Directory.GetCurrentDirectory())
+    let files = dir.GetFiles("*.txt")
+    let fileMap = addFilesToMap files
 
-    let roles = parse "Event register Student" roles
-    let roles = parse "Event pass Teacher" roles
-    let roles = parse "Event fail Teacher" roles
+    parseTxtFile fileMap |> ignore
 
-    let roles = parse "Relen register exclusion register" roles
-    let roles = parse "Relen register condition pass" roles
-    let roles = parse "Relen register response pass" roles
-    let roles = parse "Relen register condition fail" roles
-
-    let roles = parse "Relen pass exclusion pass" roles
-    let roles = parse "Relen pass exclusion fail" roles
-
-    let roles = parse "Relen fail exclusion fail" roles
-    let roles = parse "Relen fail exclusion pass" roles
-
-    //System.Console.ReadLine()
+    printfn "All line in the file have been iterated. Exit?"
+    System.Console.ReadKey() |> ignore
 
     0 // <- skal vare der
