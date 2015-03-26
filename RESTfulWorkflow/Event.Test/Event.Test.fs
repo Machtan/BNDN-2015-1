@@ -5,9 +5,12 @@ open System.IO
 
 let mutable p = new System.Diagnostics.Process()
 
-let testHelpGET eventPath (expected : bool)=
+let download eventPath =
     use w = new System.Net.WebClient ()
-    let s = w.DownloadString(sprintf "http://localhost:8080/Test/%s" eventPath)
+    w.DownloadString(sprintf "http://localhost:8080/%s" eventPath)
+
+let testHelpGET eventPath expected =
+    let s = download (sprintf "Test/%s" eventPath)
     System.Console.WriteLine("/{0} --> {1}, Expected: {2}", eventPath, s, expected.ToString())
     Assert.AreEqual(expected.ToString(),s)
 
@@ -24,20 +27,12 @@ type public Test() =
 
     [<SetUp>]
     member public x.``run before each test``() =
+        #if TARGET_MAC
+        #else
         if File.Exists("Event.exe")
         then File.Delete("Event.exe")
 
-        #if TARGET_MAC
-        let src = "../../Event/target/Event.exe"
-        let wfsrc = "../../Event/target/Workflow.dll"
-        let wfdst = "Workflow.dll"
-        if File.Exists("Workflow.dll")
-        then File.Delete("Workflow.dll")
-        File.Copy(wfsrc, wfdst)
-        #else
         let src = @"..\..\..\Event\bin\Debug\Event.exe"
-        #endif
-
         let dst = "Event.exe"
         File.Copy(src, dst)
 
@@ -45,10 +40,16 @@ type public Test() =
         p.StartInfo.FileName <- "Event.exe"
         p.StartInfo.Arguments <- ("Test 8080 ")
         p.Start() |> ignore
+        #endif
+
         //System.Console.WriteLine("Start: {0}", startData)
         //System.Console.WriteLine("P: {0} HasExited {1}", p, p.HasExited)
 
         use w = new System.Net.WebClient ()
+
+        // RESET!
+        w.UploadString("http://localhost:8080/Test?action=reset", "PUT", "TestClient") |> ignore
+
         w.UploadString("http://localhost:8080/Test/Event1", "POST", "TestClient") |> ignore
         w.UploadString("http://localhost:8080/Test/Event2", "POST", "TestClient") |> ignore
         w.UploadString("http://localhost:8080/Test/Event3", "POST", "TestClient") |> ignore
@@ -73,11 +74,14 @@ type public Test() =
 
     [<TearDown>]
     member public x.``run after each test``() =
+        #if TARGET_MAC
+        #else
         p.Kill() |> ignore
-        System.Threading.Thread.Sleep(100);
+        #endif
+        System.Threading.Thread.Sleep(10);
 
     [<Test>]
-    member public x.``Test's if a event start with the right settings`` () =
+    member public x.``Events start with the right settings`` () =
         testHelpGET "Event1/executed" false
         testHelpGET "Event1/included" true
         testHelpGET "Event1/pending" false
@@ -95,20 +99,20 @@ type public Test() =
         testHelpGET "Event5/pending" false
 
     [<Test>]
-    member public x.``Test's if a event can be executed`` () =
+    member public x.``An event can be executed`` () =
         testHelpGET "Event1/executed" false
         testHelpPUT "Event1/executed" "TestClient"
         testHelpGET "Event1/executed" true
 
     [<Test>]
-    member public x.``Test's exclusion inhipets execution`` () =
+    member public x.``Exclusion inhibits execution`` () =
         testHelpGET "Event2/executed" false
         testHelpPUT "Event1/executed" "TestClient"
         testHelpPUT "Event2/executed" "TestClient"
         testHelpGET "Event2/executed" false
 
     [<Test>]
-    member public x.``Test's condition inhipets execution`` () =
+    member public x.``Condition inhibits execution?`` () =
         testHelpGET "Event3/executed" false
         testHelpPUT "Event3/executed" "TestClient"
         testHelpGET "Event3/executed" false
@@ -118,7 +122,7 @@ type public Test() =
         testHelpGET "Event3/executed" true
 
     [<Test>]
-    member public x.``Test's response relation set the response value when executed`` () =
+    member public x.``A response relation is set to the response value when an event is executed`` () =
         testHelpGET "Event5/pending" false
         testHelpPUT "Event1/executed" "TestClient"
         testHelpGET "Event5/pending" true
@@ -126,7 +130,7 @@ type public Test() =
         testHelpGET "Event5/pending" false
 
     [<Test>]
-    member public x.``Test's response relation set the response value even after the receving event have been executed`` () =
+    member public x.``A response relation is no more set to the response value even after the receving event has been executed`` () =
         testHelpGET "Event5/pending" false
         testHelpPUT "Event5/executed" "TestClient"
         testHelpPUT "Event1/executed" "TestClient"
@@ -135,7 +139,7 @@ type public Test() =
         testHelpGET "Event5/pending" false
 
     [<Test>]
-    member public x.``Test's if a event can be pending after it's executed`` () =
+    member public x.``An event cannot be pending after it has been executed`` () =
         testHelpGET "Event5/pending" false
         testHelpPUT "Event5/executed" "TestClient"
         testHelpGET "Event5/pending" false
@@ -144,7 +148,7 @@ type public Test() =
         testHelpGET "Event5/pending" true
 
     [<Test>]
-    member public x.``Test's include relation include a event`` () =
+    member public x.``An include relation includes the event`` () =
         testHelpGET "Event2/included" true
         testHelpPUT "Event1/executed" "TestClient"
         testHelpGET "Event2/included" false
@@ -152,7 +156,7 @@ type public Test() =
         testHelpGET "Event2/included" true
 
     [<Test>]
-    member public x.``Test's include, exclusion and condition together`` () =
+    member public x.``Inclusion, exclusion and conditions work at the same time`` () =
         testHelpGET "Event3/executed" false
         testHelpGET "Event2/included" true
         testHelpPUT "Event3/executed" "TestClient"
@@ -169,7 +173,21 @@ type public Test() =
         testHelpGET "Event2/executed" true
 
     [<Test>]
-    member public x.``Test's thad you can't execute a event wihtout the needed role`` () =
+    member public x.``An event cannot be executed without the correct role`` () =
         testHelpGET "Event1/executed" false
-        testHelpPUT "Event1/executed" "WorngTestClient"
+        testHelpPUT "Event1/executed" "WrongTestClient"
         testHelpGET "Event1/executed" false
+
+    [<Test>]
+    member public x.``Get with empty role doesn't fail`` () =
+        download "Test?role=" |> ignore
+
+    [<Test>]
+    member public x.``Get with empty action doesn't fail`` () =
+        download "Test?action=" |> ignore
+
+    [<Test>]
+    member public x.``Reset with role does not return `` () =
+        let resp = download "Test?role=TEST&action=reset"
+        Assert.AreEqual(resp, "Resetting...")
+
