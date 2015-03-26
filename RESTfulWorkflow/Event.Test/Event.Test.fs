@@ -23,14 +23,28 @@ type public Test() =
 
     [<SetUp>]
     member public x.``run before each test``() =
-        if File.Exists("event.exe")
-        then File.Delete("event.exe")
-        File.Copy(@"..\..\..\Event\bin\Debug\Event.exe",@"Event.exe")
+        if File.Exists("Event.exe")
+        then File.Delete("Event.exe")
+
+        #if TARGET_MAC
+        let src = "../../Event/target/Event.exe"
+        let wfsrc = "../../Event/target/Workflow.dll"
+        let wfdst = "Workflow.dll"
+        if File.Exists("Workflow.dll")
+        then File.Delete("Workflow.dll")
+        File.Copy(wfsrc, wfdst)
+        #else
+        let src = @"..\..\..\Event\bin\Debug\Event.exe"
+        #endif
+
+        let dst = "Event.exe"
+        File.Copy(src, dst)
 
         //Starts the server form the .exe fil server from same placement as the program.
-        p.StartInfo.FileName <- "event.exe"
+        p.StartInfo.FileName <- "Event.exe"
         p.StartInfo.Arguments <- ("Test 8080 ")
-        p.Start() |> ignore
+        let startData = p.Start()
+        System.Console.WriteLine("Start: {0}", startData)
 
         use w = new System.Net.WebClient ()
         w.UploadString("http://localhost:8080/Test/Event1", "POST", "TestClient") |> ignore
@@ -54,7 +68,7 @@ type public Test() =
         //   |  [1]
         //   |     \
         //  [4]     [5]
-        
+
     [<TearDown>]
     member public x.``run after each test``() =
         p.CloseMainWindow() |> ignore
