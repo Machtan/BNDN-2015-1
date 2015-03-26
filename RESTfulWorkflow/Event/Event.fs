@@ -7,63 +7,78 @@ let split (str: string) (c: char) =
 // Attempts to get an event from the workflow
 let getEvent event state =
     match tryGet event state with
-    | Some( nodeState ) ->
-        (Some(nodeState), 200, "OK")
-    | None ->
-        (None, 404, "Not Found")
+    | Ok nodeState -> ("Found", 200, "OK", Some(nodeState))
+    | MissingEvent n -> (sprintf "'%s' was not Found" n, 404, "Not found", None)
 
 // Gets the 'executed' state of an event
 let getExecuted event state =
-    match getEvent event state with
-    | (None, status, msg) ->
-        (sprintf "Event '%s' not found" event), status, msg, state
-    | (Some(executed, _, _), status, msg) ->
-        (string executed), status, msg, state
+    let res = getEvent event state
+    let (msg, status, info, optState) = res
+    match optState with
+    | Some(executed, _, _, _) ->
+        (string executed.IsSome), status, info, state
+    | None -> msg, status, info, state
 
 // Gets the 'included' state of an event
 let getIncluded event state =
-    match getEvent event state with
-    | (None, status, msg) ->
-        (sprintf "Event '%s' not found" event), status, msg, state
-    | (Some(_, included, _), status, msg) ->
-        (string included), status, msg, state
+    let res = getEvent event state
+    let (msg, status, info, optState) = res
+    match optState with
+    | Some(_, included, _, _) ->
+        (string included), status, info, state
+    | None -> msg, status, info, state
+
+// Gets the 'executable' state of an event
+let getExecutable event state =
+    let res = getEvent event state
+    let (msg, status, info, optState) = res
+    match optState with
+    | Some(_, _, excluded, _) ->
+        (string excluded), status, info, state
+    | None -> msg, status, info, state
 
 // Gets the 'pending' state of an event
 let getPending event state =
-    match getEvent event state with
-    | (None, status, msg) ->
-        (sprintf "Event '%s' not found" event), status, msg, state
-    | (Some(_, _, pending), status, msg) ->
-        (string pending), status, msg, state
+    let res = getEvent event state
+    let (msg, status, info, optState) = res
+    match optState with
+    | Some(_, _, _, pending) ->
+        (string pending), status, info, state
+    | None -> msg, status, info, state
 
 // Attempts to execute the given event
-let setExecuted event role state =
-    match tryExecute event role state with
-    | None ->
-        (sprintf "'%s' could not be executed!" event), 404, "Error", state
-    | Some( state' ) ->
-        "Executed!", 200, "OK", state'
+let setExecuted eventname role state =
+    match tryExecute eventname role state with
+    | ExecutionResult.Ok state' ->
+        (sprintf "Executed '%s'!" eventname), 200, "OK", state'
+    | ExecutionResult.Unauthorized ->
+        (sprintf "The role '%s' cannot execute '%s'!" role eventname), 402, "Payment required", state
+    | ExecutionResult.NotExecutable ->
+        (sprintf "The event '%s' is not executable (try /executable)" eventname), 403, "Forbidden", state
+    | ExecutionResult.MissingEvent name ->
+        (sprintf "Could not execute '%s': '%s' was not Found" eventname name), 400, "Bad request", state
 
 // Attempts to create a new event
 let createEvent event role state =
-    match (tryCreate event role state) with
-    | None ->
-        (sprintf "Already created!"), 200, "OK", state
-    | Some state' ->
-        (sprintf "'%s' created!" event), 200, "OK", state'
+    (sprintf "'%s' created!" event), 201, "Created", create event role state
 
 // Adds a new relation
-let addRelation event typ dest state =
-    let msg, res =
+let addRelation eventname typ dest state =
+    let rel =
         match typ with
-        | "exclusion" -> "Added!", tryAdd event (Exclusion dest) state
-        | "condition" -> "Added!", tryAdd event (Dependent dest) state
-        | "response" -> "Added!", tryAdd event (Response dest) state
-        | "include" -> "Added!", tryAdd event (Inclusion dest) state
-        | _ -> "Could not find this relation type", None
-    match res with
-    | Some(state') -> msg, 200, "OK", state'
-    | None -> msg, 404, "Error", state
+        | "exclusion"   -> Some (Exclusion dest)
+        | "condition"   -> Some (Dependent dest)
+        | "response"    -> Some (Response dest)
+        | "include"     -> Some (Inclusion dest)
+        | _             -> None
+    match rel with
+    | None -> (sprintf "Unknown relation type '%s'" typ), 400, "Bad request", state
+    | Some relation ->
+        match tryAdd eventname relation state with
+        | UpdateResult.Ok state' ->
+            (sprintf "Added '%s' to '%s'" typ eventname), 200, "Ok", state'
+        | UpdateResult.MissingEvent e ->
+            (sprintf "Could not add relation to '%s': Missing Event '%s'" eventname e), 400, "Bad request", state
 
 // Gets a list of the events in the workflow
 let getEvents role state =

@@ -1,4 +1,5 @@
 module Workflow
+open System
 
 type Event
 type Relation =             // The internal string is a http address
@@ -9,9 +10,23 @@ type Relation =             // The internal string is a http address
 
 type Workflow = Map<string, Event>
 
-val tryCreate: string -> string -> Workflow -> Workflow option
-val tryAdd: string -> Relation -> Workflow -> Workflow option
-val tryExecute: string -> string -> Workflow -> Workflow option
-val tryGet: string -> Workflow -> (bool * bool * bool) option
-val showWorkflow: Workflow -> unit
-val getEventNames: string -> Workflow -> string list
+type ExecutionResult =
+    | Ok of Workflow
+    | Unauthorized
+    | NotExecutable
+    | MissingEvent of string
+
+type UpdateResult =
+    | Ok of Workflow
+    | MissingEvent of string
+
+type GetResult =
+    | Ok of (DateTime option * bool * bool * bool)
+    | MissingEvent of string
+
+val create:         string   -> string    -> Workflow  -> Workflow
+val tryAdd:         string   -> Relation  -> Workflow  -> UpdateResult
+val tryExecute:     string   -> string    -> Workflow  -> ExecutionResult
+val tryGet:         string   -> Workflow  -> GetResult
+val getEventNames:  string   -> Workflow  -> string list
+val showWorkflow:   Workflow -> unit

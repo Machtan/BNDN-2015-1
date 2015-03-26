@@ -1,6 +1,17 @@
 module Workflow
 open System
 
+// The types of messages that the events can send
+type Message =
+    // Internal messages
+    | Notify of string          // The target is notified that this is executed
+                                // Argument is(The name of this event)
+    | SetExcluded               // The target event becomes excluded
+    | SetIncluded               // The target event becomes included
+    | SetPending                // The target event becomes pending
+    | AddCondition of string    // The target event is not executable before this one
+    | RemoveCondition of string // This event is excluded, so a condition is voided
+
 // The types of relations the events can know of
 type Relation =             // The internal string is a http address
     | Dependent of string   // What is enabled once a event is executed
@@ -22,55 +33,55 @@ type Event = {
     // Ex: {"register": false}
 }
 
-// The types of messages that the events can send
-type Message =
-    // Internal messages
-    | Notify of string          // The target is notified that this is executed
-                                // Argument is(The name of this event)
-    | SetExcluded               // The target event becomes excluded
-    | SetIncluded               // The target event becomes included
-    | SetPending                // The target event becomes pending
-    | AddCondition of string    // The target event is not executable before this one
-    | RemoveCondition of string // This event is excluded, so a condition is voided
-
-    // External messages
-    | Execute of string         // *new* tries to execute a event as a role
-    | Create of string          // *new* creates a event executable by a role
-    | AddRelation of Relation   // *new* adds a relation
-
 type Command = string * Message
 type Workflow = Map<string, Event>
 
+// A type indicating the result of an execution attempt
+type ExecutionResult =
+    | Ok of Workflow
+    | Unauthorized
+    | NotExecutable
+    | MissingEvent of string
+
+// A type indicating the result of an update
+type UpdateResult =
+    | Ok of Workflow
+    | MissingEvent of string
+
+// A type for the result of a get result
+type GetResult =
+    | Ok of (DateTime option * bool * bool * bool)
+    | MissingEvent of string
+
 // Creates a new event
-let createEvent event role state cmds =
-    if Map.containsKey event state
+let createEvent eventname role state =
+    if Map.containsKey eventname state
     then
-        None
+        state
     else
-        printfn "Creating '%s'..." event
+        printfn "Creating '%s'..." eventname
         let n = {
-            name = event;
-            role = role;
-            executed = None;
-            included = false;
-            pending = false;
-            executable = true;
-            relations = Set.empty;
-            conditions = Map.empty;
+            name        = eventname;
+            role        = role;
+            executed    = None;
+            included    = true;
+            pending     = false;
+            executable  = true;
+            relations   = Set.empty;
+            conditions  = Map.empty;
         }
-        Some(Map.add event n state, cmds)
+        Map.add eventname n state
 
 // Adds a relation to a event
-let addRelation event relation state cmds =
+let addRelation event relation state =
     printfn "Adding relation '%A' to '%s'..." relation event.name
     let n = { event with relations = Set.add relation event.relations; }
-    let state' = Map.add event.name n state
     // Notify dependents
-    let cmds' =
+    let cmd =
         match relation with
-        | Dependent dep -> (dep, AddCondition event.name)::cmds
-        | _ -> cmds
-    state', cmds'
+        | Dependent dep -> Some(dep, AddCondition event.name)
+        | _ -> None
+    Map.add event.name n state, cmd
 
 // Adds a condition to a event
 let addCondition event condition state =
@@ -99,14 +110,11 @@ let removeCondition event con state =
     Map.add event.name { event with conditions = cons; executable = inc; } state
 
 // Tries to execute a event
-let tryExecuteInternal event role state cmds =
+let tryExecuteInternal event role state : (ExecutionResult * Command list) =
     printfn "Executing '%s'..." event.name
-    if not event.executable
+    if event.role = role
     then
-        printfn "The event '%s' was attempted executed, but is not executable!" event.name
-        None
-    else
-        if event.role = role
+        if (event.executable && event.included)
         then
             let event' = {
                 event with
@@ -114,7 +122,7 @@ let tryExecuteInternal event role state cmds =
                     pending = false;
             }
             let state' = Map.add event.name event' state
-            let notify relations commands =
+            let getNotificationCommands relations commands =
                 Set.foldBack (
                     fun rel cmds ->
                         let cmd =
@@ -126,11 +134,12 @@ let tryExecuteInternal event role state cmds =
                         cmd::cmds
                 ) relations commands
 
-            Some (state', notify event.relations cmds)
+            ExecutionResult.Ok state', getNotificationCommands event.relations []
         else
-            printfn "The role '%s' does not have permission to execute '%s'" role event.name
-            None
-
+            NotExecutable, []
+    else
+        printfn "The role '%s' does not have permission to execute '%s'" role event.name
+        Unauthorized, []
 
 // Sets the event to be excluded
 let setExcluded event state cmds =
@@ -178,47 +187,30 @@ let setIncluded event state (cmds: Command list) =
         (state', notify event.executed.IsSome event.relations cmds)
 
 // Sends a message to the simulation state
-let sendMessage (state: Workflow) (cmds: Command list) =
-    let rec trySend state cmds =
-        match cmds with
-        | [] -> Some state
-        | (eventname, msg)::remainder ->
-            let res =
+let rec tryUpdate (state: Workflow) (cmds: Command list) : UpdateResult =
+    match cmds with
+    | [] -> UpdateResult.Ok state
+    | (eventname, msg)::remainder ->
+        match Map.tryFind eventname state with
+        | Some event ->
+            let state', cmds' =
                 match msg with
-                | Create role -> createEvent eventname role state remainder
-
-                // Check whether the event exists before proceeding
-                | _ ->
-                    match Map.tryFind eventname state with
-                    | Some event ->
-                        match msg with
-                        | Notify executed ->
-                            Some ((notifyDependent event executed state), remainder)
-                        | SetExcluded ->
-                            Some (setExcluded event state remainder)
-                        | SetIncluded ->
-                            Some (setIncluded event state remainder)
-                        | SetPending ->
-                            Some ((setPending event state), remainder)
-                        | AddCondition con ->
-                            Some ((addCondition event con state), remainder)
-                        | RemoveCondition con ->
-                            Some ((removeCondition event con state), remainder)
-                        | Execute role ->
-                            (tryExecuteInternal event role state remainder) // This can fail
-                        | AddRelation rel ->
-                            Some (addRelation event rel state remainder)
-                        | Create role ->
-                            printfn "HOW DID THIS HAPPEN!?"
-                            createEvent eventname role state remainder
-                    | None ->
-                        printfn "The event at '%s' does not exist! Aborting!" eventname
-                        None
-            match res with
-            | Some (state', cmds') -> trySend state' cmds'
-            | None -> None
-
-    trySend state cmds
+                | Notify executed ->
+                    notifyDependent event executed state, remainder
+                | SetExcluded ->
+                    setExcluded event state remainder
+                | SetIncluded ->
+                    setIncluded event state remainder
+                | SetPending ->
+                    setPending event state, remainder
+                | AddCondition con ->
+                    addCondition event con state, remainder
+                | RemoveCondition con ->
+                    removeCondition event con state, remainder
+            tryUpdate state' cmds'
+        | None ->
+            printfn "Event not found while sending message: '%s'" eventname
+            UpdateResult.MissingEvent eventname
 
 
 // Interface: These functions below, and the 'Relation' type
@@ -231,22 +223,37 @@ let showWorkflow (state: Workflow) =
     ) state
 
 // Creates a new event
-let tryCreate (event: string) (role: string)( state: Workflow) =
-    sendMessage state [event, Create role]
+let create (eventname: string) (role: string)( state: Workflow) =
+    createEvent eventname role state
 
 // Adds a relation to an event
-let tryAdd (event: string) (relation: Relation) (state: Workflow) =
-    sendMessage state [event, AddRelation relation]
+let tryAdd (eventname: string) (relation: Relation) (state: Workflow) =
+    match Map.tryFind eventname state with
+    | Some event ->
+        match addRelation event relation state with
+        | state', Some cmd -> tryUpdate state' [cmd]
+        | state', None -> UpdateResult.Ok state'
+    | None -> UpdateResult.MissingEvent eventname
 
 // Attempts to execute an event
-let tryExecute (event: string) (role: string) (state: Workflow) =
-    sendMessage state [event, Execute role]
+let tryExecute (eventname: string) (role: string) (state: Workflow) =
+    match Map.tryFind eventname state with
+    | Some(event) ->
+        match tryExecuteInternal event role state with
+        | ExecutionResult.Ok state', cmds ->
+            match tryUpdate state' cmds with
+            | UpdateResult.Ok updatedState -> ExecutionResult.Ok updatedState
+            | UpdateResult.MissingEvent e -> ExecutionResult.MissingEvent e
+        | err, _ -> err
+    | None -> ExecutionResult.MissingEvent eventname
 
 // Attempts to get information about an event
-let tryGet (event: string) (state: Workflow) =
-    match Map.tryFind event state with
-    | Some event -> Some (event.executed.IsSome, event.executable, event.pending)
-    | None -> None
+let tryGet (eventname: string) (state: Workflow) =
+    match Map.tryFind eventname state with
+    | Some event ->
+        GetResult.Ok (event.executed, event.included, event.executable, event.pending)
+    | None ->
+        GetResult.MissingEvent eventname
 
 // Returns the names of the nodes as a string
 let getEventNames (role: string) (state: Workflow) =
