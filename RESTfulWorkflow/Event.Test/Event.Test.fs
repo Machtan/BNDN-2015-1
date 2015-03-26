@@ -44,8 +44,9 @@ type public Test() =
         //Starts the server form the .exe fil server from same placement as the program.
         p.StartInfo.FileName <- "Event.exe"
         p.StartInfo.Arguments <- ("Test 8080 ")
-        let startData = p.Start()
-        System.Console.WriteLine("Start: {0}", startData)
+        //let startData = p.Start()
+        //System.Console.WriteLine("Start: {0}", startData)
+        //System.Console.WriteLine("P: {0} HasExited {1}", p, p.HasExited)
 
         use w = new System.Net.WebClient ()
         w.UploadString("http://localhost:8080/Test/Event1", "POST", "TestClient") |> ignore
@@ -72,7 +73,7 @@ type public Test() =
 
     [<TearDown>]
     member public x.``run after each test``() =
-        p.CloseMainWindow() |> ignore
+        //p.Kill() |> ignore
         System.Threading.Thread.Sleep(100);
 
     [<Test>]
