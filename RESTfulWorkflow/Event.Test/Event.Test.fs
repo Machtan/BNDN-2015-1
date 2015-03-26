@@ -16,7 +16,8 @@ let testHelpPUT eventPath role =
     try
         ignore <| w.UploadString(sprintf "http://localhost:8080/Test/%s" eventPath, "PUT" , role)
     with
-        | x -> 0 |> ignore
+        | x ->  System.Console.WriteLine("Exeption: {0}", x.Message)
+                0 |> ignore
 
 [<TestFixture>]
 type public Test() =
@@ -72,6 +73,25 @@ type public Test() =
     [<TearDown>]
     member public x.``run after each test``() =
         p.CloseMainWindow() |> ignore
+        System.Threading.Thread.Sleep(100);
+
+    [<Test>]
+    member public x.``Test's if a event start with the right settings`` () =
+        testHelpGET "Event1/executed" false
+        testHelpGET "Event1/included" true
+        testHelpGET "Event1/pending" false
+        testHelpGET "Event2/executed" false
+        testHelpGET "Event2/included" true
+        testHelpGET "Event2/pending" false
+        testHelpGET "Event3/executed" false
+        testHelpGET "Event3/included" true
+        testHelpGET "Event3/pending" false
+        testHelpGET "Event4/executed" false
+        testHelpGET "Event4/included" true
+        testHelpGET "Event4/pending" false
+        testHelpGET "Event5/executed" false
+        testHelpGET "Event5/included" true
+        testHelpGET "Event5/pending" false
 
     [<Test>]
     member public x.``Test's if a event can be executed`` () =
@@ -99,6 +119,15 @@ type public Test() =
     [<Test>]
     member public x.``Test's response relation set the response value when executed`` () =
         testHelpGET "Event5/pending" false
+        testHelpPUT "Event1/executed" "TestClient"
+        testHelpGET "Event5/pending" true
+        testHelpPUT "Event5/executed" "TestClient"
+        testHelpGET "Event5/pending" false
+
+    [<Test>]
+    member public x.``Test's response relation set the response value even after the receving event have been executed`` () =
+        testHelpGET "Event5/pending" false
+        testHelpPUT "Event5/executed" "TestClient"
         testHelpPUT "Event1/executed" "TestClient"
         testHelpGET "Event5/pending" true
         testHelpPUT "Event5/executed" "TestClient"
@@ -137,3 +166,9 @@ type public Test() =
         testHelpPUT "Event3/executed" "TestClient"
         testHelpGET "Event3/executed" true
         testHelpGET "Event2/executed" true
+
+    [<Test>]
+    member public x.``Test's thad you can't execute a event wihtout the needed role`` () =
+        testHelpGET "Event1/executed" false
+        testHelpPUT "Event1/executed" "WorngTestClient"
+        testHelpGET "Event1/executed" false
