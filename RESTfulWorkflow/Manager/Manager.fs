@@ -37,8 +37,8 @@ let post (url : string) data =
 let parse (line : string) roles =
     let words = List.ofArray(line.Split ' ')
     match words with
-    | "Rol"::name::[]                       -> addRole name roles;
-    | "Eve"::name::EventRules               ->
+    | "rol"::name::[]                       -> addRole name roles;
+    | "eve"::name::EventRules               ->
         let rec inner x : bool =
             match x with
             | role::xs  ->
@@ -47,11 +47,11 @@ let parse (line : string) roles =
                 else printfn "ERROR: \"%s\" Is not a role" role ; false
             | _         -> true
         if inner EventRules
-        then post (sprintf " %s/%s" url name) (List.fold (fun acc x -> acc + x + " ") "" EventRules)
+        then post (sprintf " %s/%s" url name) (String.concat " " EventRules)
         roles
-    | "Rel"::event::typ::toEvent::[]        -> post (sprintf " %s/%s/%s" url event typ) toEvent ; roles
+    | "rel"::event::typ::toEvent::[]        -> post (sprintf " %s/%s/%s" url event typ) toEvent ; roles
     | "//"::xs | "#"::xs                    -> roles
-    | x                                     -> printfn "ERROR: \"%s\" Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x); roles
+    | x                                     -> printfn "ERROR: \"%s\" Is not parseble" (String.concat " " x) ; roles
 
 //Parse all lines in selected file or written file.
 let rec parseTxtFile fileMap =
