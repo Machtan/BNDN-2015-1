@@ -37,35 +37,50 @@ let post (url : string) data =
 let parse (line : string) roles =
     let words = List.ofArray(line.Split ' ')
     match words with
-    | "rol"::name::[]                       -> addRole name roles;
-    | "eve"::name::EventRules               ->
+    | "rol"::name::[] -> addRole name roles;
+    | "eve"::name::eventroles ->
         let rec inner x : bool =
             match x with
             | role::xs  ->
                 if List.exists (fun x -> x = role) roles
-                then inner xs
-                else printfn "ERROR: \"%s\" Is not a role" role ; false
-            | _         -> true
-        if inner EventRules
-        then post (sprintf " %s/%s" url name) (String.concat " " EventRules)
+                then
+                    inner xs
+                else
+                    printfn "ERROR: \"%s\" Is not a role" role
+                    false
+            | _  ->
+                true
+        if inner eventroles
+        then post (sprintf " %s/%s" url name) (String.concat " " eventroles)
         roles
-    | "rel"::event::typ::toEvent::[]        -> post (sprintf " %s/%s/%s" url event typ) toEvent ; roles
-    | "//"::xs | "#"::xs                    -> roles
-    | x                                     -> printfn "ERROR: \"%s\" Is not parseble" (String.concat " " x) ; roles
+    | "rel"::event::typ::toEvent::[] ->
+        post (sprintf " %s/%s/%s" url event typ) toEvent ; roles
+    | "//"::xs | "#"::xs ->
+        roles
+    | x ->
+        printfn "ERROR: \"%s\" Is not parseble" (String.concat " " x)
+        roles
 
 //Parse all lines in selected file or written file.
-let rec parseTxtFile fileMap =
+let rec promptParseFile fileMap =
     Map.iter (fun key filename -> printfn "%s : %s" key filename) fileMap
     printfn "Select a file or a filepath"
     let filename = System.Console.ReadLine()
     let filename =
-        System.Threading.Thread.Sleep(10)
         match fileMap.TryFind filename with
         | None          -> filename
         | Some(name)    -> name
+
+    let folder roles line =
+        System.Threading.Thread.Sleep(10)
+        parse line roles
+
     if File.Exists(filename)
-    then File.ReadAllLines(filename) |> List.ofArray |> List.fold (fun roles line -> parse line roles) []
-    else printfn "ERROR: Could not find file"; parseTxtFile fileMap
+    then
+        File.ReadAllLines(filename) |> List.ofArray |> List.fold folder []
+    else
+        printfn "ERROR: Could not find file"
+        promptParseFile fileMap
 
 [<EntryPoint>]
 let main argv =
@@ -89,7 +104,7 @@ let main argv =
     let files = dir.GetFiles("*.txt")
     let fileMap = addFilesToMap files
 
-    parseTxtFile fileMap |> ignore
+    promptParseFile fileMap |> ignore
 
     printfn "All lines in the file have been iterated. Exit?"
     System.Console.ReadKey() |> ignore
