@@ -24,9 +24,9 @@ type GetResult =
     | Ok of (DateTime option * bool * bool * bool)
     | MissingEvent of string
 
-val create:         string   -> string    -> Workflow  -> Workflow
-val tryAdd:         string   -> Relation  -> Workflow  -> UpdateResult
-val tryExecute:     string   -> string    -> Workflow  -> ExecutionResult
-val tryGet:         string   -> Workflow  -> GetResult
-val getEventNames:  string   -> Workflow  -> string list
+val create:         string   -> string list -> Workflow  -> Workflow
+val tryAdd:         string   -> Relation    -> Workflow  -> UpdateResult
+val tryExecute:     string   -> string      -> Workflow  -> ExecutionResult
+val tryGet:         string   -> Workflow    -> GetResult
+val getEventNames:  string   -> Workflow    -> string list
 val showWorkflow:   Workflow -> unit

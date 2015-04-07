@@ -59,8 +59,8 @@ let setExecuted eventname role state =
         (sprintf "Could not execute '%s': '%s' was not Found" eventname name), 400, "Bad request", state
 
 // Attempts to create a new event
-let createEvent event role state =
-    (sprintf "'%s' created!" event), 201, "Created", create event role state
+let createEvent event roles state =
+    (sprintf "'%s' created!" event), 201, "Created", create event roles state
 
 // Adds a new relation
 let addRelation eventname typ dest state =
@@ -69,7 +69,7 @@ let addRelation eventname typ dest state =
         | "exclusion"   -> Some (Exclusion dest)
         | "condition"   -> Some (Dependent dest)
         | "response"    -> Some (Response dest)
-        | "include"     -> Some (Inclusion dest)
+        | "inclusion"   -> Some (Inclusion dest)
         | _             -> None
     match rel with
     | None -> (sprintf "Unknown relation type '%s'" typ), 400, "Bad request", state
@@ -155,7 +155,7 @@ let start_server workflow port =
                 else
                     match meth, apath with
                     | "POST", [] ->
-                        createEvent event body state
+                        createEvent event (split body ' ') state
                     | "GET", ["executed"] ->
                         getExecuted event state
                     | "PUT", ["executed"] ->

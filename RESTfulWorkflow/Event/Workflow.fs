@@ -23,7 +23,7 @@ type Relation =             // The internal string is a http address
 // We only really use this as the state singleton (which is nice, tho)
 type Event = {
     name: string;
-    role: string;
+    roles: Set<string>;
     executed: DateTime option;
     included: bool;
     executable: bool;
@@ -54,7 +54,7 @@ type GetResult =
     | MissingEvent of string
 
 // Creates a new event
-let createEvent eventname role state =
+let createEvent eventname roles state =
     if Map.containsKey eventname state
     then
         state
@@ -62,7 +62,7 @@ let createEvent eventname role state =
         printfn "Creating '%s'..." eventname
         let n = {
             name        = eventname;
-            role        = role;
+            roles       = Set.ofList roles;
             executed    = None;
             included    = true;
             pending     = false;
@@ -112,7 +112,7 @@ let removeCondition event con state =
 // Tries to execute a event
 let tryExecuteInternal event role state : (ExecutionResult * Command list) =
     printfn "Executing '%s'..." event.name
-    if event.role = role
+    if Set.contains role event.roles
     then
         if (event.executable && event.included)
         then
@@ -223,8 +223,8 @@ let showWorkflow (state: Workflow) =
     ) state
 
 // Creates a new event
-let create (eventname: string) (role: string)( state: Workflow) =
-    createEvent eventname role state
+let create (eventname: string) (roles: string list)( state: Workflow) =
+    createEvent eventname roles state
 
 // Adds a relation to an event
 let tryAdd (eventname: string) (relation: Relation) (state: Workflow) =
@@ -257,5 +257,5 @@ let tryGet (eventname: string) (state: Workflow) =
 
 // Returns the names of the nodes as a string
 let getEventNames (role: string) (state: Workflow) =
-    let events = Map.filter (fun _ v -> v.role = role) state
+    let events = Map.filter (fun _ v -> Set.contains role v.roles) state
     Map.fold (fun keys key _ -> key::keys) [] events

@@ -28,7 +28,7 @@ let post (url : string) data =
         then w.UploadString(url, "POST", data) |> printfn "POST %s [%s] --> %s" url data
         else w.UploadString(url, "POST")       |> printfn "POST %s --> %s" url
     with
-        | x -> 
+        | x ->
             printfn "POST %s [%s] --> \n%s" url data x.Message
             printfn "ERROR: The workflow can not be completed. continue?"
             System.Console.ReadKey() |> ignore
@@ -58,7 +58,7 @@ let rec parseTxtFile fileMap =
     Map.iter (fun key filename -> printfn "%s : %s" key filename) fileMap
     printfn "Select a file or a filepath"
     let filename = System.Console.ReadLine()
-    let filename =  
+    let filename =
         System.Threading.Thread.Sleep(10)
         match fileMap.TryFind filename with
         | None          -> filename

@@ -1,13 +1,13 @@
-Role Student
-Role Teacher
-Event register Student
-Event pass Teacher
-Event fail Teacher
-Relen register exclusion register
-Relen register condition pass
-Relen register response pass
-Relen register condition fail
-Relen pass exclusion pass
-Relen pass exclusion fail
-Relen fail exclusion fail
-Relen fail exclusion pass
+rol Student
+rol Teacher
+eve register Student
+eve pass Teacher
+eve fail Teacher
+rel register exclusion register
+rel register condition pass
+rel register response pass
+rel register condition fail
+rel pass exclusion pass
+rel pass exclusion fail
+rel fail exclusion fail
+rel fail exclusion pass
