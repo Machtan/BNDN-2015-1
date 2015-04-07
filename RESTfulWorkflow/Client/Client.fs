@@ -44,42 +44,42 @@ let GetAllEvents baseUrl =
 //Gets the status of a particular event
 let eventStatus baseUrl eventName = 
     let executed = HTTPRequestDownload (baseUrl + "/" + eventName + "/executed")
-    let included = HTTPRequestDownload (baseUrl + "/" + eventName + "/included")
+    let executable = HTTPRequestDownload (baseUrl + "/" + eventName + "/executable")
     let pending = HTTPRequestDownload (baseUrl + "/" + eventName + "/pending")
-    if (executed.IsNone || included.IsNone || pending.IsNone) then
+    if (executed.IsNone || executable.IsNone || pending.IsNone) then
         None
     else
-        Some((eventName, Convert.ToBoolean(executed.Value),Convert.ToBoolean(included.Value),Convert.ToBoolean(pending.Value)) : eventStatus)
+        Some((eventName, Convert.ToBoolean(executed.Value),Convert.ToBoolean(pending.Value),Convert.ToBoolean(executable.Value)) : eventStatus)
 
 //Write out the status of a list of EventStatus
 let rec writeOutEventStatus events baseUrl =
     match (events) with
-    | (eventName, executed,included,pended) :: xs -> 
-                    match ((eventName, executed,included,pended)) with
+    | (eventName, executed,pended,executeable) :: xs -> 
+                    match ((eventName, executed,pended,executeable)) with
                     //| (executed,included,pended) when executed = false && included = false && pended = true -> 
-                    | (eventName, executed,included,pended) when executed = false && included = true && pended = false ->  printfn "%s   EXECUTABLE" eventName
-                    | (eventName, executed,included,pended) when executed = false && included = true && pended = true ->  printfn "!%s   EXECUTABLE" eventName
-                    | (eventName, executed,included,pended) when executed = true && included = false && pended = false ->  printfn "X%s" eventName
-                    | (eventName, executed,included,pended) when executed = true && included = false && pended = true ->   printfn "X%s" eventName
-                    | (eventName, executed,included,pended) when executed = true && included = true && pended = false ->   printfn "X%s" eventName
-                    | (eventName, executed,included,pended) when executed = true && included = true && pended = true ->   printfn "X%s" eventName
+                    | (eventName, executed,pended,executeable) when executed = false && executeable = true && pended = false ->  printfn "%s   EXECUTABLE" eventName
+                    | (eventName, executed,pended,executeable) when executed = false && executeable = true && pended = true ->  printfn "!%s   EXECUTABLE" eventName
+                    | (eventName, executed,pended,executeable) when executed = true && executeable = false && pended = false ->  printfn "X%s" eventName
+                    | (eventName, executed,pended,executeable) when executed = true && executeable = false && pended = true ->   printfn "X%s" eventName
+                    | (eventName, executed,pended,executeable) when executed = true && executeable = true && pended = false ->   printfn "X%s" eventName
+                    | (eventName, executed,pended,executeable) when executed = true && executeable = true && pended = true ->   printfn "X%s" eventName
                     | _ -> 0 |> ignore
-                    (eventName, executed,included,pended) :: writeOutEventStatus xs baseUrl
+                    (eventName, executed,pended,executeable) :: writeOutEventStatus xs baseUrl
     | _ -> []
 
 //Writes the status of each event to the console and returns a list containing only the events that was responsive.
 let rec getStatusAndRemovefaulty events baseUrl = 
     let rec getValidEvents ev =
         match (ev) with
-            | (eventName, executed,included,pended) :: xs -> 
+            | (eventName, executed,pended,executeable) :: xs -> 
                         let eventStatusResponse = eventStatus baseUrl eventName
                         if (eventStatusResponse.IsSome) then
-                            let (eventName, executed,included,pended) = eventStatusResponse.Value
-                            (eventName, executed,included,pended) :: getValidEvents xs
+                            let (eventName, executed,pended, executeable) = eventStatusResponse.Value
+                            (eventName, executed,pended,executeable) :: getValidEvents xs
                         else
                             getValidEvents xs
             | _ -> []
-    writeOutEventStatus (List.sortBy (fun k -> let (eventName, executed,included,pended) = k
+    writeOutEventStatus (List.sortBy (fun k -> let (eventName, executed,pended,executeable) = k
                                                not pended) (getValidEvents events)) baseUrl
 //Prompts the user to enter the BaseURL
 let rec selectRole n = 
@@ -123,12 +123,12 @@ let rec mainLoop (events : eventStatus list) =
                     printfn "Program failed to exchange data with the event. Eventname, baseURL or connection may be at fault."
                     mainLoop events
              else
-                    let (eventName, executed,included,pended) = eventStatusResponse.Value
+                    let (eventName, executed,pended,executeable) = eventStatusResponse.Value
                     //Write out status:
                     printfn "Event status:"
                     printfn "IsExecuted: %s" (executed.ToString())
-                    printfn "IsIncluded: %s" (included.ToString())
                     printfn "IsPending: %s" (pended.ToString())
+                    printfn "IsExecuteable: %s" (executeable.ToString())
                     if (executed) then
                         printfn "Event has already been executed, so it cant be executed."                   
                     else
