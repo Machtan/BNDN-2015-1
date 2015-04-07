@@ -164,6 +164,8 @@ let start_server workflow port =
                         getPending event state
                     | "GET", ["included"] ->
                         getIncluded event state
+                    | "GET", ["executable"] ->
+                        getExecutable event state
                     | "POST", [relation] ->
                         addRelation event relation body state
                     | _ ->
