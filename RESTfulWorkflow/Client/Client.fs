@@ -84,15 +84,10 @@ let rec getStatusAndRemovefaulty events baseUrl =
 //Prompts the user to enter the BaseURL
 let rec selectRole n = 
     printfn "Whats your role?"
-    printfn "Actions:"
-    printfn "1 -> Teacher"
-    printfn "2 -> Student"
     printf "-> "
     match(Console.ReadLine()) with
-        | "1" -> "Teacher"
-        | "2" -> "Student"
-        | _ ->   printfn "Role doesn't exist!"
-                 selectRole n
+        | "" -> selectRole n
+        | v -> v
 
 //Prompts the user to enter the BaseURL
 let selectBaseUrl n = 
