@@ -21,7 +21,7 @@ let addRole name roles =
     else name::roles
 
 //POST new events and relationships to the server
-let post (url : string) data roles =
+let post (url : string) data =
     use w = new System.Net.WebClient ()
     try
         if not (data = "")
@@ -32,28 +32,37 @@ let post (url : string) data roles =
             printfn "POST %s [%s] --> \n%s" url data x.Message
             printfn "ERROR: The workflow can not be completed. continue?"
             System.Console.ReadKey() |> ignore
-    roles
 
 //Parses a string into a specific post to the server.
 let parse (line : string) roles =
     let words = List.ofArray(line.Split ' ')
     match words with
-        | "Role"::name::[]                      -> addRole name roles;
-        | "Event"::name::role::[]               ->
-            if List.exists (fun x -> x = role) roles
-            then post (sprintf " %s/%s" url name) role roles
-            else printfn "ERROR: The role \"%s\" do not exist" role; roles
-        | "Relen"::event::typ::toEvent::[]      -> post (sprintf " %s/%s/%s" url event typ) toEvent roles
-        | x                                     -> printfn "ERROR: \"%s\" Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x); roles
+    | "Rol"::name::[]                       -> addRole name roles;
+    | "Eve"::name::EventRules               ->
+        let rec inner x : bool =
+            match x with
+            | role::xs  ->
+                if List.exists (fun x -> x = role) roles
+                then inner xs
+                else printfn "ERROR: \"%s\" Is not a role" role ; false
+            | _         -> true
+        if inner EventRules
+        then post (sprintf " %s/%s" url name) (List.fold (fun acc x -> acc + x + " ") "" EventRules)
+        roles
+    | "Rel"::event::typ::toEvent::[]        -> post (sprintf " %s/%s/%s" url event typ) toEvent ; roles
+    | "//"::xs | "#"::xs                    -> roles
+    | x                                     -> printfn "ERROR: \"%s\" Is not parseble" (List.fold (fun acc x -> acc + x + " ") "" x); roles
 
 //Parse all lines in selected file or written file.
 let rec parseTxtFile fileMap =
     Map.iter (fun key filename -> printfn "%s : %s" key filename) fileMap
     printfn "Select a file or a filepath"
     let filename = System.Console.ReadLine()
-    let filename =  match fileMap.TryFind filename with
-                    | None          -> filename
-                    | Some(name)    -> name
+    let filename =  
+        System.Threading.Thread.Sleep(10)
+        match fileMap.TryFind filename with
+        | None          -> filename
+        | Some(name)    -> name
     if File.Exists(filename)
     then File.ReadAllLines(filename) |> List.ofArray |> List.fold (fun roles line -> parse line roles) []
     else printfn "ERROR: Could not find file"; parseTxtFile fileMap
