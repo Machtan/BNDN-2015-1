@@ -19,7 +19,7 @@ let rec addFilesToMap (files : FileInfo []) : Map<string,string> =
 //Adds a new role to the workflow
 let addRole name roles =
     if List.exists (fun x -> x = name) roles
-    then printfn "ERROR: The role (%s) do alderady exist" name; roles
+    then printfn "WARNING: The role (%s) do alderady exist" name; roles
     else name::roles
 
 //POST new events and relationships to the server
@@ -31,7 +31,7 @@ let post (urladdon : string) data =
         else w.UploadString((sprintf " %s/%s" url urladdon), "POST")       |> printfn "POST /%s --> %s" urladdon
     with
         | x ->
-            printfn "POST %s [%s] --> \n%s" url data x.Message
+            printfn "POST %s/%s [%s] --> \n%s" url urladdon data x.Message
             printfn "ERROR: The workflow can not be completed. continue?"
             System.Console.ReadKey() |> ignore
 
@@ -39,31 +39,21 @@ let post (urladdon : string) data =
 let parse (line : string) roles useroles =
     let words = List.ofArray(line.Split ' ')
     match words with
-    | "rol"::name::[] -> addRole name roles;
-    | "eve"::name::eventroles ->
+    | "rol"::name::[] -> addRole name roles
+    | "eve"::flag::name::eventroles -> 
         if useroles
         then
-            let rec inner x : bool =
-                match x with
-                | role::xs  ->
-                    if List.exists (fun x -> x = role) roles
-                    then
-                        inner xs
-                    else
-                        printfn "ERROR: \"%s\" Is not a role" role
-                        false
-                | _  ->
-                    true
-            if inner eventroles
-            then post name (String.concat " " eventroles)
-        else post name ""
+            if List.forall (fun x -> List.exists (fun x' -> x' = x) roles) eventroles
+            then post name (sprintf "%s %s" flag (String.concat " " eventroles))
+        else post name flag
         roles
-    | "rel"::event::typ::toEvent::[] ->
-        post (sprintf "%s/%s" event typ) toEvent ; roles
-    | "//"::xs | "#"::xs ->
+    | "rel"::event::typ::toEvent::[] -> 
+        post (sprintf "%s/%s" event typ) toEvent
         roles
-    | x ->
-        printfn "ERROR: \"%s\" Is not parseble" (String.concat " " x)
+    | "//"::xs | "#"::xs -> roles
+    | ""::[] -> roles
+    | x -> 
+        printfn "WARNING: \"%s\" Is not parseble" (String.concat " " x)
         roles
 
 //Parse all lines in selected file or written file.
