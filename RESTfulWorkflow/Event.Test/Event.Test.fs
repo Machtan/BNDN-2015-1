@@ -50,11 +50,11 @@ type public Test() =
         // RESET!
         w.UploadString("http://localhost:8080/Test?action=reset", "PUT", "TestClient") |> ignore
 
-        w.UploadString("http://localhost:8080/Test/Event1", "POST", "TestClient") |> ignore
-        w.UploadString("http://localhost:8080/Test/Event2", "POST", "TestClient") |> ignore
-        w.UploadString("http://localhost:8080/Test/Event3", "POST", "TestClient") |> ignore
-        w.UploadString("http://localhost:8080/Test/Event4", "POST", "TestClient") |> ignore
-        w.UploadString("http://localhost:8080/Test/Event5", "POST", "TestClient") |> ignore
+        w.UploadString("http://localhost:8080/Test/Event1", "POST", "000 TestClient") |> ignore
+        w.UploadString("http://localhost:8080/Test/Event2", "POST", "000 TestClient") |> ignore
+        w.UploadString("http://localhost:8080/Test/Event3", "POST", "000 TestClient") |> ignore
+        w.UploadString("http://localhost:8080/Test/Event4", "POST", "000 TestClient") |> ignore
+        w.UploadString("http://localhost:8080/Test/Event5", "POST", "000 TestClient") |> ignore
 
         w.UploadString("http://localhost:8080/Test/Event1/exclusion", "POST", "Event2") |> ignore // [1]->%[2]
         w.UploadString("http://localhost:8080/Test/Event1/condition", "POST", "Event3") |> ignore // [1]->o[3]
