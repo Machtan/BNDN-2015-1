@@ -34,24 +34,27 @@ let post (url : string) data =
             System.Console.ReadKey() |> ignore
 
 //Parses a string into a specific post to the server.
-let parse (line : string) roles =
+let parse (line : string) roles useroles =
     let words = List.ofArray(line.Split ' ')
     match words with
     | "rol"::name::[] -> addRole name roles;
     | "eve"::name::eventroles ->
-        let rec inner x : bool =
-            match x with
-            | role::xs  ->
-                if List.exists (fun x -> x = role) roles
-                then
-                    inner xs
-                else
-                    printfn "ERROR: \"%s\" Is not a role" role
-                    false
-            | _  ->
-                true
-        if inner eventroles
-        then post (sprintf " %s/%s" url name) (String.concat " " eventroles)
+        if useroles
+        then
+            let rec inner x : bool =
+                match x with
+                | role::xs  ->
+                    if List.exists (fun x -> x = role) roles
+                    then
+                        inner xs
+                    else
+                        printfn "ERROR: \"%s\" Is not a role" role
+                        false
+                | _  ->
+                    true
+            if inner eventroles
+            then post (sprintf " %s/%s" url name) (String.concat " " eventroles)
+        else post (sprintf " %s/%s" url name) ""
         roles
     | "rel"::event::typ::toEvent::[] ->
         post (sprintf " %s/%s/%s" url event typ) toEvent ; roles
@@ -71,12 +74,19 @@ let rec promptParseFile fileMap =
         | None          -> filename
         | Some(name)    -> name
 
-    let folder roles line =
-        System.Threading.Thread.Sleep(10)
-        parse line roles
+    printfn "Use roles? (y/n)"
+    let useroles = System.Console.ReadLine()
+    let useroles =
+        match useroles with
+        | "y"           -> true
+        | "n"           -> false
+        | _             -> printfn "Defaults to yes" ; true
 
     if File.Exists(filename)
     then
+        let folder roles line =
+            System.Threading.Thread.Sleep(10)
+            parse line roles useroles
         File.ReadAllLines(filename) |> List.ofArray |> List.fold folder []
     else
         printfn "ERROR: Could not find file"

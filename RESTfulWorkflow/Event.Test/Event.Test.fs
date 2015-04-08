@@ -78,7 +78,7 @@ type public Test() =
         #else
         p.Kill() |> ignore
         #endif
-        System.Threading.Thread.Sleep(10);
+        System.Threading.Thread.Sleep(15);
 
     [<Test>]
     member public x.``Events start with the right settings`` () =
