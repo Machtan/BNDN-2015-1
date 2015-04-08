@@ -1,4 +1,6 @@
-﻿open System.IO
+﻿module Manager
+
+open System.IO
 
 let port = "8080"
 let serverName = "Test"
