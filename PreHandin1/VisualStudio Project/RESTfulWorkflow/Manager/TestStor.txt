@@ -1,0 +1,29 @@
+rol Student
+rol Teacher
+eve register Student
+eve pass Teacher
+eve fail Teacher
+rel register exclusion register
+rel register condition pass
+rel register response pass
+rel register condition fail
+rel pass exclusion pass
+rel pass exclusion fail
+rel fail exclusion fail
+rel fail exclusion pass
+eve handin Student
+eve approve Teacher
+eve disapprove Teacher
+rel handin exclusion handin
+rel handin condition approve
+rel handin response approve
+rel handin inclusion approve
+rel handin condition disapprove
+rel handin inclusion disapprove
+rel approve exclusion approve
+rel approve exclusion disapprove
+rel approve condition pass
+rel disapprove exclusion disapprove
+rel disapprove exclusion approve
+rel disapprove inclusion handin
+rel disapprove response handin

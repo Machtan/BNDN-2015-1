@@ -1,0 +1,22 @@
+name = "Event.Test"
+main = "Event.Test"
+type = "test"
+authors = ["Jakob Lautrup Nysom"]
+libraries = [
+    "nunit.framework",
+    "nunit.core",
+    "nunit.util",
+    "nunit.core.interfaces",
+]
+
+includes = [
+    "binaries"
+]
+
+[targets] # Manual dependency resolution (atm)
+Event__Test = [
+    "nunit.framework",
+    "nunit.core",
+    "nunit.util",
+    "nunit.core.interfaces",
+]

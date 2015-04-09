@@ -1,0 +1,8 @@
+name = "Event"
+main = "Event"
+authors = ["Jakob Lautrup Nysom"]
+libraries = []
+
+[targets] # Manual dependency resolution (atm)
+Event = ["Workflow"]
+Workflow = []

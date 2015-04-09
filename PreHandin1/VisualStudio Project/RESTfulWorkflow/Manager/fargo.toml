@@ -1,0 +1,5 @@
+name = "EasyManager"
+main = "EasyManager"
+libraries = []
+[targets] # Manual dependency resolution (atm)
+EasyManager = []
