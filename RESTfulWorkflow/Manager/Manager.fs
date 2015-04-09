@@ -86,13 +86,8 @@ let rec promptParseFile fileMap =
 
 let Start =
 
-    //Try to make and move a new event.exe, from the Event project
     #if TARGET_MAC
     #else
-    if File.Exists("event.exe")
-    then File.Delete("event.exe")
-    File.Copy(@"..\..\..\Event\bin\Debug\Event.exe",@"Event.exe")
-
     //Starts the server form the .exe fil server from same placement as the program.
     let p = new System.Diagnostics.Process()
     p.StartInfo.FileName <- "event.exe"
