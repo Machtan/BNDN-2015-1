@@ -38,7 +38,7 @@ def dcrconv(file):
         eid = event.attrib["id"]
         roles = [role.text.replace(" ", "_") for role in event.find("custom").find("roles")]
         #print("Adding {} to {}".format(roles, eid))
-        roletext = roles[0] # TODO more roles than 1?
+        roletext = " ".join(roles)
         events[eid] = [roletext]
     
     for label in resources.find("labelMappings"):
@@ -46,11 +46,24 @@ def dcrconv(file):
         labtext = label.attrib["labelId"].replace("\n", " ").replace(" ", "_")
         events[eid].append(labtext)
     
+    # Find event states
+    # excluded, pending, executed => 000
+    marking = root.find("runtime").find("marking")
+    included = {n.attrib["id"] for n in marking.find("included")}
+    executed = {n.attrib["id"] for n in marking.find("executed")}
+    pending = {n.attrib["id"] for n in marking.find("pendingResponses")}
+    for eid in events:
+        inc = "0" if eid in included else "1" # Default to true
+        pen = "1" if eid in pending else "0"
+        exe = "1" if eid in executed else "0"
+        events[eid].append(inc + pen + exe)
+    
     #pprint.pprint(events)
     for event, attrs in events.items():
         role = attrs[0]
         name = attrs[1]
-        lines.append("{} {} {}".format(EVENTNAME, name, role))
+        state = attrs[2]
+        lines.append("{} {} {} {}".format(EVENTNAME, state, name, role))
     
     for supertag, relname in namemap.items():
         for tag in constraints.find(supertag):

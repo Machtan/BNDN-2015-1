@@ -59,8 +59,17 @@ let setExecuted eventname role state =
         (sprintf "Could not execute '%s': '%s' was not Found" eventname name), 400, "Bad request", state
 
 // Attempts to create a new event
-let createEvent event roles state =
-    (sprintf "'%s' created!" event), 201, "Created", create event roles state
+let createEvent event body state =
+    let args = split body ' '
+    let str = List.head args
+    let roles = List.tail args
+    if not (str.Length = 3) then
+        let msg = sprintf "Received invalid initial event state: %s" str
+        printfn "%s" msg
+        msg, 400, "Bad request", state
+    else
+        let initialState = (str.[0] = '1', str.[1] = '1', str.[2] = '1')
+        (sprintf "'%s' created!" event), 201, "Created", create event roles initialState state
 
 // Adds a new relation
 let addRelation eventname typ dest state =
@@ -155,7 +164,7 @@ let start_server workflow port =
                 else
                     match meth, apath with
                     | "POST", [] ->
-                        createEvent event (split body ' ') state
+                        createEvent event body state
                     | "GET", ["executed"] ->
                         getExecuted event state
                     | "PUT", ["executed"] ->

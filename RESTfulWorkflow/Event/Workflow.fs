@@ -54,19 +54,20 @@ type GetResult =
     | MissingEvent of string
 
 // Creates a new event
-let createEvent eventname roles state =
+let createEvent eventname roles initialState state =
     if Map.containsKey eventname state
     then
         state
     else
-        printfn "Creating '%s'..." eventname
+        let (excluded, pending, executed) = initialState
+        printfn "CREATED: '%s' with state %A and roles %A." eventname initialState roles
         let n = {
             name        = eventname;
             roles       = Set.ofList roles;
-            executed    = None;
-            included    = true;
-            pending     = false;
-            executable  = true;
+            executed    = if executed then Some DateTime.Now else None;
+            included    = not excluded;
+            pending     = if (pending && not executed) then true else false;
+            executable  = not excluded;
             relations   = Set.empty;
             conditions  = Map.empty;
         }
@@ -112,7 +113,7 @@ let removeCondition event con state =
 // Tries to execute a event
 let tryExecuteInternal event role state : (ExecutionResult * Command list) =
     printfn "Executing '%s'..." event.name
-    if Set.contains role event.roles
+    if (not (event.roles = Set.empty)) && (Set.contains role event.roles)
     then
         if (event.executable && event.included)
         then
@@ -133,7 +134,6 @@ let tryExecuteInternal event role state : (ExecutionResult * Command list) =
                             | Inclusion dst -> (dst, SetIncluded)
                         cmd::cmds
                 ) relations commands
-
             ExecutionResult.Ok state', getNotificationCommands event.relations []
         else
             NotExecutable, []
@@ -223,8 +223,8 @@ let showWorkflow (state: Workflow) =
     ) state
 
 // Creates a new event
-let create (eventname: string) (roles: string list)( state: Workflow) =
-    createEvent eventname roles state
+let create (eventname: string) (roles: string list) (initialState: bool*bool*bool) ( state: Workflow) =
+    createEvent eventname roles initialState state
 
 // Adds a relation to an event
 let tryAdd (eventname: string) (relation: Relation) (state: Workflow) =
@@ -257,5 +257,5 @@ let tryGet (eventname: string) (state: Workflow) =
 
 // Returns the names of the nodes as a string
 let getEventNames (role: string) (state: Workflow) =
-    let events = Map.filter (fun _ v -> Set.contains role v.roles) state
+    let events = Map.filter (fun _ v -> (v.roles = Set.empty) || (Set.contains role v.roles)) state
     Map.fold (fun keys key _ -> key::keys) [] events

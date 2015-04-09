@@ -48,19 +48,23 @@ type public Test() =
         use w = new System.Net.WebClient ()
 
         // RESET!
-        w.UploadString("http://localhost:8080/Test?action=reset", "PUT", "TestClient") |> ignore
+        let testUpload (client: System.Net.WebClient) (url: string) (meth: string) (data: string) =
+            System.Threading.Thread.Sleep(15);
+            client.UploadString(url, meth, data) |> ignore
 
-        w.UploadString("http://localhost:8080/Test/Event1", "POST", "000 TestClient") |> ignore
-        w.UploadString("http://localhost:8080/Test/Event2", "POST", "000 TestClient") |> ignore
-        w.UploadString("http://localhost:8080/Test/Event3", "POST", "000 TestClient") |> ignore
-        w.UploadString("http://localhost:8080/Test/Event4", "POST", "000 TestClient") |> ignore
-        w.UploadString("http://localhost:8080/Test/Event5", "POST", "000 TestClient") |> ignore
+        testUpload w "http://localhost:8080/Test?action=reset" "PUT" "TestClient"
 
-        w.UploadString("http://localhost:8080/Test/Event1/exclusion", "POST", "Event2") |> ignore // [1]->%[2]
-        w.UploadString("http://localhost:8080/Test/Event1/condition", "POST", "Event3") |> ignore // [1]->o[3]
-        w.UploadString("http://localhost:8080/Test/Event1/response",  "POST", "Event5") |> ignore // [1]o->[5]
-        w.UploadString("http://localhost:8080/Test/Event2/condition", "POST", "Event3") |> ignore // [2]->o[3]
-        w.UploadString("http://localhost:8080/Test/Event4/include",   "POST", "Event2") |> ignore // [4]->+[2]
+        testUpload w "http://localhost:8080/Test/Event1" "POST" "000 Testw"
+        testUpload w "http://localhost:8080/Test/Event2" "POST" "000 Testw"
+        testUpload w "http://localhost:8080/Test/Event3" "POST" "000 Testw"
+        testUpload w "http://localhost:8080/Test/Event4" "POST" "000 Testw"
+        testUpload w "http://localhost:8080/Test/Event5" "POST" "000 Testw"
+
+        testUpload w "http://localhost:8080/Test/Event1/exclusion" "POST" "Event2" // [1]->%[2]
+        testUpload w "http://localhost:8080/Test/Event1/condition" "POST" "Event3" // [1]->o[3]
+        testUpload w "http://localhost:8080/Test/Event1/response"  "POST" "Event5" // [1]o->[5]
+        testUpload w "http://localhost:8080/Test/Event2/condition" "POST" "Event3" // [2]->o[3]
+        testUpload w "http://localhost:8080/Test/Event4/inclusion"   "POST" "Event2" // [4]->+[2]
 
         // [1]->%[2], [1]->o[3], [1]o->[5]
         // [2]->o[3]
