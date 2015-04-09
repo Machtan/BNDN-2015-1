@@ -27,8 +27,8 @@ let post (urladdon : string) data =
     use w = new System.Net.WebClient ()
     try
         if not (data = "")
-        then w.UploadString((sprintf " %s/%s" url urladdon), "POST", data) |> printfn "POST /%s [%s] --> %s" urladdon data
-        else w.UploadString((sprintf " %s/%s" url urladdon), "POST")       |> printfn "POST /%s --> %s" urladdon
+        then w.UploadString((sprintf " %s/%s" url urladdon), "POST", data) |> printfn "POST /%s [%s] \n\t--> %s" urladdon data
+        else w.UploadString((sprintf " %s/%s" url urladdon), "POST")       |> printfn "POST /%s \n\t--> %s" urladdon
     with
         | x ->
             printfn "POST %s/%s [%s] --> \n%s" url urladdon data x.Message
