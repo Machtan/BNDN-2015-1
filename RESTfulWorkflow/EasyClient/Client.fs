@@ -12,7 +12,7 @@ let mutable baseUrl = "http://localhost:8080/Test"
 let HTTPRequestUpload (url : string) verb = 
     try
         use w = new System.Net.WebClient () 
-        Some(w.UploadString(url,verb))
+        Some(w.UploadString(url,verb,""))
     with
         | ex -> None
 
