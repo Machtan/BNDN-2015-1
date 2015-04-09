@@ -55,11 +55,11 @@ let rec writeOutEventStatus events baseUrl =
                     match ((eventName, executed,pended,executeable)) with
                     //| (executed,included,pended) when executed = false && included = false && pended = true -> 
                     | (eventName, executed,pended,executeable) when executed = false && executeable = true && pended = false ->  printfn "%s   EXECUTABLE" eventName
-                    | (eventName, executed,pended,executeable) when executed = false && executeable = true && pended = true ->  printfn "!%s   EXECUTABLE" eventName
-                    | (eventName, executed,pended,executeable) when executed = true && executeable = false && pended = false ->  printfn "X%s" eventName
-                    | (eventName, executed,pended,executeable) when executed = true && executeable = false && pended = true ->   printfn "X%s" eventName
-                    | (eventName, executed,pended,executeable) when executed = true && executeable = true && pended = false ->   printfn "X%s" eventName
-                    | (eventName, executed,pended,executeable) when executed = true && executeable = true && pended = true ->   printfn "X%s" eventName
+                    | (eventName, executed,pended,executeable) when executed = false && executeable = true && pended = true ->  printfn "! %s   EXECUTABLE" eventName
+                    | (eventName, executed,pended,executeable) when executed = true && executeable = false && pended = false ->  printfn "X %s" eventName
+                    | (eventName, executed,pended,executeable) when executed = true && executeable = false && pended = true ->   printfn "X %s" eventName
+                    | (eventName, executed,pended,executeable) when executed = true && executeable = true && pended = false ->   printfn "X %s" eventName
+                    | (eventName, executed,pended,executeable) when executed = true && executeable = true && pended = true ->   printfn "X %s" eventName
                     | _ -> 0 |> ignore
                     (eventName, executed,pended,executeable) :: writeOutEventStatus xs baseUrl
     | _ -> []
@@ -112,7 +112,7 @@ let rec mainLoop (events : eventStatus list) =
              else
                     let (eventName, executed,pended,executeable) = eventStatusResponse.Value
                     //Write out status:
-                    printfn "Event status:"
+                    printfn "Current event status (before action):"
                     printfn "IsExecuted: %s" (executed.ToString())
                     printfn "IsPending: %s" (pended.ToString())
                     printfn "IsExecuteable: %s" (executeable.ToString())
@@ -124,7 +124,8 @@ let rec mainLoop (events : eventStatus list) =
                             printfn "Program failed to issue the command to the event. Connection may be at fault."                             
                         if (response.IsSome) then 
                             response.Value |> printfn "Success! Response: %s" 
-                    printfn "action completed"
+                    printfn "action completed"                    
+                    printfn ""
                     mainLoop (GetEventsList events)
     | "2" -> baseUrl <- selectBaseUrl 0
              Some(true) //Change BaseURL
