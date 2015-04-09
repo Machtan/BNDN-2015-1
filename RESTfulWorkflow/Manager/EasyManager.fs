@@ -58,7 +58,7 @@ let parse (line : string) roles useroles =
 
 //Parse all lines in selected file or written file.
 let promptParseFile x =
-    let filename = "Resources\hospitaldcr.txt"
+    let filename = "hospitaldcr.txt"
 
     if File.Exists(filename)
     then
@@ -72,7 +72,7 @@ let promptParseFile x =
 let easyStart =
     //Starts the server form the Event.exe fil server from same placement as the program.
     let p = new System.Diagnostics.Process()
-    p.StartInfo.FileName <- "Resources\Event.exe"
+    p.StartInfo.FileName <- "Event.exe"
     p.StartInfo.Arguments <- (serverName + " " + port)
     p.Start() |> ignore
 
