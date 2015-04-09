@@ -4,5 +4,5 @@ open Manager
 
 [<EntryPoint>]
 let main argv =
-    easyStart
+    Start
     0 //dead code
