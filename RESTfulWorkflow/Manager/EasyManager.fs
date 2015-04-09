@@ -27,8 +27,8 @@ let post (urladdon : string) data =
     use w = new System.Net.WebClient ()
     try
         if not (data = "")
-        then w.UploadString((sprintf " %s/%s" url urladdon), "POST", data) |> printfn "POST /%s [%s] --> %s" urladdon data
-        else w.UploadString((sprintf " %s/%s" url urladdon), "POST")       |> printfn "POST /%s --> %s" urladdon
+        then w.UploadString((sprintf " %s/%s" url urladdon), "POST", data) |> printfn "POST /%s [%s] \n\t--> %s" urladdon data
+        else w.UploadString((sprintf " %s/%s" url urladdon), "POST")       |> printfn "POST /%s \n\t--> %s" urladdon
     with
         | x ->
             printfn "POST %s/%s [%s] --> \n%s" url urladdon data x.Message
@@ -58,7 +58,7 @@ let parse (line : string) roles useroles =
 
 //Parse all lines in selected file or written file.
 let promptParseFile x =
-    let filename = "hospitaldcr.txt"
+    let filename = "Resources\hospitaldcr.txt"
 
     if File.Exists(filename)
     then
@@ -72,7 +72,7 @@ let promptParseFile x =
 let easyStart =
     //Starts the server form the Event.exe fil server from same placement as the program.
     let p = new System.Diagnostics.Process()
-    p.StartInfo.FileName <- "Event.exe"
+    p.StartInfo.FileName <- "Resources\Event.exe"
     p.StartInfo.Arguments <- (serverName + " " + port)
     p.Start() |> ignore
 
