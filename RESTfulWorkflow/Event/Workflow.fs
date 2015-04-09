@@ -113,7 +113,7 @@ let removeCondition event con state =
 // Tries to execute a event
 let tryExecuteInternal event role state : (ExecutionResult * Command list) =
     printfn "Executing '%s'..." event.name
-    if (not (event.roles = Set.empty)) && (Set.contains role event.roles)
+    if (event.roles = Set.empty) || (Set.contains role event.roles)
     then
         if (event.executable && event.included)
         then

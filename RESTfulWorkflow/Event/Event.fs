@@ -150,13 +150,20 @@ let start_server workflow port =
                 let role = args.Get "role"
                 printfn "role: %s" role
                 let action = args.Get "action"
-                if action = "reset" then
+                match action with
+                | "reset" ->
                     "Resetting...", 200, "Ok", Map.empty
-                else
+                | "debug" ->
+                    showWorkflow state
+                    "OK", 200, "Ok", state
+                | null ->
                     if (wfevent = workflow) && (meth = "GET" ) then
                         getEvents role state
                     else
                         "There is no workflow like that here D: (yet)", 404, "Not Found", state
+                | _ ->
+                    printfn "Action: '%A'" action
+                    "Invalid action requested", 404, "Not Found", state
             | wfevent::event::apath ->
                 //printfn "Workflow: %s Args: %A" wfevent apath
                 if not (wfevent = workflow) then
