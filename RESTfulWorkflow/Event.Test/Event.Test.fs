@@ -1,4 +1,4 @@
-﻿module EventTest.``Testeing of the event code``
+﻿module EventTest.``Testing of the event code``
 
 open NUnit.Framework
 open System.IO
@@ -54,17 +54,17 @@ type public Test() =
 
         testUpload w "http://localhost:8080/Test?action=reset" "PUT" "TestClient"
 
-        testUpload w "http://localhost:8080/Test/Event1" "POST" "000 Testw"
-        testUpload w "http://localhost:8080/Test/Event2" "POST" "000 Testw"
-        testUpload w "http://localhost:8080/Test/Event3" "POST" "000 Testw"
-        testUpload w "http://localhost:8080/Test/Event4" "POST" "000 Testw"
-        testUpload w "http://localhost:8080/Test/Event5" "POST" "000 Testw"
+        testUpload w "http://localhost:8080/Test/Event1" "POST" "000 TestClient"
+        testUpload w "http://localhost:8080/Test/Event2" "POST" "000 TestClient"
+        testUpload w "http://localhost:8080/Test/Event3" "POST" "000 TestClient"
+        testUpload w "http://localhost:8080/Test/Event4" "POST" "000 TestClient"
+        testUpload w "http://localhost:8080/Test/Event5" "POST" "000 TestClient"
 
         testUpload w "http://localhost:8080/Test/Event1/exclusion" "POST" "Event2" // [1]->%[2]
         testUpload w "http://localhost:8080/Test/Event1/condition" "POST" "Event3" // [1]->o[3]
         testUpload w "http://localhost:8080/Test/Event1/response"  "POST" "Event5" // [1]o->[5]
         testUpload w "http://localhost:8080/Test/Event2/condition" "POST" "Event3" // [2]->o[3]
-        testUpload w "http://localhost:8080/Test/Event4/inclusion"   "POST" "Event2" // [4]->+[2]
+        testUpload w "http://localhost:8080/Test/Event4/inclusion" "POST" "Event2" // [4]->+[2]
 
         // [1]->%[2], [1]->o[3], [1]o->[5]
         // [2]->o[3]
@@ -187,7 +187,13 @@ type public Test() =
         download "Test?role=" |> ignore
 
     [<Test>]
-    member public x.``Get with empty action doesn't fail`` () =
+    [<ExpectedException( "System.Net.WebException" )>]
+    member public x.``Get with unknown action returns 404`` () =
+        download "Test?action=pinkfluffyunicorn" |> ignore
+
+    [<Test>]
+    [<ExpectedException( "System.Net.WebException" )>]
+    member public x.``Get with empty action returns 404`` () =
         download "Test?action=" |> ignore
 
     [<Test>]
