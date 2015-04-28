@@ -56,13 +56,12 @@ let rec writeOutEventStatus events baseUrl =
     match (events) with
     | (eventName, executed,pended,executeable) :: xs -> 
                     match ((eventName, executed,pended,executeable)) with
-                    //| (executed,included,pended) when executed = false && included = false && pended = true -> 
-                    | (eventName, executed,pended,executeable) when executed = false && executeable = true && pended = false ->  printfn "%s   EXECUTABLE" eventName
-                    | (eventName, executed,pended,executeable) when executed = false && executeable = true && pended = true ->  printfn "! %s   EXECUTABLE" eventName
-                    | (eventName, executed,pended,executeable) when executed = true && executeable = false && pended = false ->  printfn "X %s" eventName
-                    | (eventName, executed,pended,executeable) when executed = true && executeable = false && pended = true ->   printfn "X %s" eventName
-                    | (eventName, executed,pended,executeable) when executed = true && executeable = true && pended = false ->   printfn "X %s" eventName
-                    | (eventName, executed,pended,executeable) when executed = true && executeable = true && pended = true ->   printfn "X %s" eventName
+                    | (eventName, false,false,true)  ->  printfn "%s   EXECUTABLE" eventName
+                    | (eventName, false,true,true)  ->  printfn "! %s   EXECUTABLE" eventName
+                    | (eventName, true,false,false)  ->  printfn "X %s" eventName
+                    | (eventName, true,true,false)  ->   printfn "X %s" eventName
+                    | (eventName, true,false,true)  ->   printfn "X %s   EXECUTABLE" eventName
+                    | (eventName, true,true,true)  ->   printfn "X %s   EXECUTABLE" eventName
                     | _ -> 0 |> ignore
                     (eventName, executed,pended,executeable) :: writeOutEventStatus xs baseUrl
     | _ -> []
