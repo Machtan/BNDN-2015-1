@@ -33,7 +33,8 @@ val create_event:               EventName -> EventState -> ResultEvent
 
 /// Return name and state of given event
 val get_event_state:            Event -> string*EventState
-//VI MANGLER EN CHECK ROLES!!!
+/// Check if given event have one of given roles
+val check_roles:                Event -> Roles -> bool
 
 //Update
 
