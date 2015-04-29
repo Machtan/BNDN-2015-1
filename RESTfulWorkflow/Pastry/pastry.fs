@@ -4,6 +4,7 @@ open System.Security.Cryptography
 open Newtonsoft.Json
 open System.Net
 open System.IO
+open System.Threading
 
 // Type definitions
 type U128 = uint64 * uint64
@@ -22,15 +23,17 @@ let len_L = 16 // or 32
 
 // ====================================================
 
+// UPDATE: send_messsage and start_listening.listen
 type MessageType =
 | Join      // A new node is joining and requesting states
 | Update    // A new node has been added sucessfully: update to include it
+| JoinState // The state data for a new node
 | Route     // Send a message somewhere
 // Add more persistency commands here
 
 // The state record of a Pastry node
 type Node = {
-    id: GUID;
+    guid: GUID;
     address: NetworkLocation;
     // I assume that there are never more than 65k rows in the table
     routing_table: Map<GUID, Address> list;
@@ -40,23 +43,29 @@ type Node = {
     leaves: Map<GUID, Address>;     // GUID-numerically closest nodes
 }
 
+// Just a little formatting
+let error str =
+    printfn "ERROR: %s" str
+
 // Splits a string at the given char and returns a list of substrings
 let split (str: string) (c: char) =
     List.ofArray (str.Split([|c|]))
 
-// Sends a pastry message somewhere
-let send_message (address: NetworkLocation) (destination: U128) (typ: MessageType) (data: string) =
+// Sends a pastry message to a node at an address, that a type of message must
+// be forwarded towards a pastry node, carrying some data
+let send_message (address: NetworkLocation) (typ: MessageType) (message: string) (destination: U128) =
     try
         let cmd =
             match typ with
             | Join      -> "join"
+            | JoinState -> "joinstate"
             | Update    -> "update"
             | Route     -> "route"
         let (p1, p2) = destination
-        let url = sprintf "http://%s/pastry/%s/%d%d/" address cmd p1 p2
-        printfn "SEND: %s => %s" url data
+        let url = sprintf "http://%s/pastry/%s/%020d%020d" address cmd p1 p2
+        printfn "SEND: %s => %s" url message
         use w = new System.Net.WebClient ()
-        Some(w.UploadString(url, "POST", data))
+        Some(w.UploadString(url, "POST", message))
     with
         | ex -> None
 
@@ -72,13 +81,67 @@ let reply (response: HttpListenerResponse) answer status reason =
     response.OutputStream.Write(buffer,0,buffer.Length);
     response.OutputStream.Close();
 
+// Calculates the absolute distance between two GUIDs
+let distance (a: GUID) (b: GUID) : U128 =
+    let (a1, a2) = a
+    let (b1, b2) = b // below: Unsigned shenanigans
+    let n1 = if a1 > b1 then a1 - b1 else b1 - a1
+    let n2 = if a2 > b2 then a2 - b2 else b2 - a2
+    (n1, n2)
+
+// Serializes the state of the given node
+let serialize (node: Node) : string =
+    JsonConvert.SerializeObject node
+
+let SEPARATOR = " SEPARATOR " // This is silly...
+// Handles a message intended for this node
+let handle_message (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
+    printfn "PASTRY: Handling '%A' message '%s'..." typ msg
+    match typ with
+    | Join ->
+        let firstsep = msg.IndexOf(SEPARATOR)
+        let address = msg.[..firstsep-1]
+        let states = msg.[firstsep + SEPARATOR.Length..]
+        // Failure is unimportant here, no?
+        ignore <| send_message address JoinState states key
+        node
+    | _ ->
+        node
+
 // Messages
 // Join: join address
 // Routes a message somewhere
 let route (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
-    // I'll just write this one... god knows where it should all go
-    //if
-    node
+    printfn "PASTRY: Routing '%A' message towards '%A'" typ key
+    let message =
+        match typ with // This is actually okay since the nodes contain no strings
+        | Join ->
+            // NOTE NOTE NOTE ------- remove later!
+            // Simulate some latency on localhost
+            printfn "Sleeping before forwarding join..."
+            Thread.Sleep(10000)
+            printfn "Done! Continuing..."
+
+            sprintf "%s%s%s" msg SEPARATOR (serialize node)
+        | _ -> msg
+
+    // Within leaf set
+    if (node.minleaf <= key && key <= node.maxleaf) || Map.isEmpty node.leaves then
+        printfn "PASTRY: Found target within leaf set!"
+        let distance_check = fun leafkey _ acc ->
+            if distance leafkey key < distance acc key then leafkey else acc
+        let closest = Map.foldBack distance_check node.leaves node.guid
+        if closest = node.guid then
+            handle_message node typ message key
+        else
+            let address = Map.find closest node.leaves
+            match send_message address typ message key with
+            | None -> error <| sprintf "Failed to send message to %s" address
+            | Some(_) -> ()
+            node
+    else
+        printfn "PASTRY: Checking routing table..."
+        node
 
 // Convert a byte array to an u64. Please don't use an array that is more than
 // 8 bytes long... (tip: You get undefined behavior)
@@ -97,20 +160,36 @@ let hash (ip_address: NetworkLocation): U128 =
     let bytes: byte[] = (content |> HashAlgorithm.Create("SHA1").ComputeHash).[..15] // 16 first bytes
     let a = to_u64 bytes.[..7]
     let b = to_u64 bytes.[8..15]
+    printfn "Hash : a / b : %d / %d" a b
     (a, b)
 
-// Just a little formatting
-let error str =
-    printfn "ERROR: %s" str
+// Attempts to convert the given string to a GUID
+let deserialize_guid (str: string) : GUID option =
+    if not (str.Length = 40) then
+        None
+    else
+        let a = str.[..19]
+        let b = str.[20..]
+        try
+            let ua = System.Convert.ToUInt64(a)
+            let ub = System.Convert.ToUInt64(b)
+            Some((ua, ub)) //
+        with
+            | ex -> None
+
+// A result type to simplify the interpretation a little
+type InterpretResult =
+| Valid of Node
+| Invalid of string * int * string
 
 // Makes the given pastry node start listening...
 let start_listening (node: Node) =
     printfn "Initializing..."
     use listener = new System.Net.HttpListener ()
-    listener.Prefixes.Add "http://localhost:8080/"
+    let basepath = sprintf "http://%s/" node.address
+    printfn "Listening at '%s'..." basepath
+    listener.Prefixes.Add basepath
     listener.Start ()
-
-    printfn "Listening..."
 
     let rec listen (node: Node) =
         // Listen for a a message
@@ -130,37 +209,55 @@ let start_listening (node: Node) =
         let parts = split (path.[1..]) '/' // That annoying first slash...
         printfn "Parts: %A" parts
         // Now interpret what was received
-        let (updated_node, answer, status, reason) =
+        let result =
             match parts with
-            | "pastry"::cmd::dst ->
-                printfn "%A" route
-                match cmd with
-                | "join"    ->
-                    node, "Unsupported", 404, "Not Found" //route node Join cmd dst body
-                | "update"  ->
-                    node, "Unsupported", 404, "Not Found" //route node Update cmd dst body
-                | "route"   ->
-                    node, "Unsupported", 404, "Not Found" //route node Route cmd dst body
-                | _         ->
-                    error <| sprintf "Received bad pastry command: '%s'" cmd
-                    node, (sprintf "Bad pastry command: '%s'" cmd), 400, "Not Found"
+            | "pastry"::cmd_string::dst_string::[] ->
+                match deserialize_guid dst_string with
+                | Some(guid) ->
+                    printfn "%A" route
+                    match cmd_string with
+                    | "join" ->
+                        reply response "Send attempted!" 200 "Ok"
+                        Valid(route node Join body guid)
+                    | "update" ->
+                        reply response "Send attempted!" 200 "Ok"
+                        Valid(route node Update body guid)
+                    | "route" ->
+                        reply response "Send attempted!" 200 "Ok"
+                        Valid(route node Route body guid)
+                    | "joinstate" ->
+                        reply response "Received!" 200 "Ok"
+                        Valid(handle_message node JoinState body guid)
+                    | _ ->
+                        let error_message = sprintf "Bad pastry command: '%s'" cmd_string
+                        Invalid(error_message, 400, "Not Found")
+                | None ->
+                    let error_message = sprintf "Invalid GUID received: '%s'" dst_string
+                    Invalid(error_message, 404, "Not found")
 
             | "pastry"::stuff -> // only handles '/pastry'
-                error <| sprintf "Bad pastry request url gotten: %s" path
-                node, (sprintf "Unrecognized pastry request url: '%s'" path), 400, "Illegal action"
+                let error_message = sprintf "Unrecognized pastry request url: '%s'" path
+                Invalid(error_message, 400, "Illegal action")
             | _ ->
-                error <| sprintf "Got something not related to pastry: %s" path
-                node, (sprintf "Not related to pastry: %s" path), 404, "Not found"
-        reply response answer status reason
-        listen updated_node // Listen again
+                let error_message = sprintf "Not related to pastry: %s" path
+                Invalid(error_message, 404, "Not found")
 
-    listen node // Start listening
+        match result with
+        | Valid(updated_node) ->
+            listen updated_node // Listen again
+        | Invalid(error_message, status, reason) ->
+            error error_message
+            reply response error_message status reason
+
+    ignore <| listen node // Start listening
 
 // Creates a local node and makes it join the Pastry network
-let join_network (address: NetworkLocation) (peer: NetworkLocation option): Node =
+let join_network (address: NetworkLocation) (peer: NetworkLocation option) =
     let guid = hash address
+    let (a, b) = guid
+    printfn "? Pastry GUID: %020d%020d" a b
     let node = {
-        id = guid;
+        guid = guid;
         address = address;
         leaves = Map.empty;
         minleaf = guid;
@@ -172,9 +269,9 @@ let join_network (address: NetworkLocation) (peer: NetworkLocation option): Node
     | None ->
         start_listening node
     | Some(peer) ->
-        match send_message peer guid Join address with
+        match send_message peer Join address guid with
         | None ->
-            failwith (sprintf "Could not establish a connection with peer at '%s'" peer)
+            error <| sprintf "Could not establish a connection with peer at '%s'" peer
         | Some(_) ->
             start_listening node
 
@@ -206,7 +303,7 @@ let main args =
     match args with
     | [|addr; port; peer|] ->
         let address = sprintf "%s:%s" (if addr = "" then get_public_ip() else addr) port
-        printfn "Joining pastry network at '%s'..." address
+        printfn "? Joining pastry network at '%s'..." address
         let known_peer = if peer = "" then None else Some(peer)
         let node = join_network address known_peer
         ()
