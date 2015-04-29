@@ -2,12 +2,16 @@
 open System
 open System.Security.Cryptography
 open Newtonsoft.Json
+open Newtonsoft.Json.Converters
 open System.Net
 open System.IO
 open System.Threading
 
 // =================== TYPE DEFINITIONS ======================
-type U128 = uint64 * uint64
+type U128 = {
+    a: uint64; // First part of the 128 bits
+    b: uint64; // Second part of the 128 bits
+}
 type NetworkLocation = string // an url... Maybe something better later
 type GUID = U128 // u128... Maybe something better later
 type Address = NetworkLocation
@@ -26,12 +30,22 @@ type MessageType =
 type Node = {
     guid: GUID;
     address: NetworkLocation;
-    // I assume that there are never more than 65k rows in the table
-    routing_table: Map<GUID, Address> list;
-    minleaf: U128;
-    maxleaf: U128;
     neighbors: Map<GUID, Address>;  // Physical location proximity (IP address)
     leaves: Map<GUID, Address>;     // GUID-numerically closest nodes
+    minleaf: U128;
+    maxleaf: U128;
+    routing_table: Map<GUID, Address> list;
+}
+
+// Something to make the JSON serialization work
+type SerializableNode = {
+    guid: string;
+    address: NetworkLocation;
+    routing_table: Map<string, Address> list;
+    minleaf: string;
+    maxleaf: string;
+    neighbors: Map<string, Address>;
+    leaves: Map<string, Address>;
 }
 
 // A result type to simplify the interpretation a little
@@ -69,7 +83,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
             | JoinState -> "joinstate"
             | Update    -> "update"
             | Route     -> "route"
-        let (p1, p2) = destination
+        let {a = p1; b = p2} = destination
         let url = sprintf "http://%s/pastry/%s/%020d%020d" address cmd p1 p2
         printfn "SEND: %s => %s" url message
         use w = new System.Net.WebClient ()
@@ -90,18 +104,77 @@ let reply (response: HttpListenerResponse) answer status reason =
     response.OutputStream.Close();
 
 // Calculates the absolute distance between two GUIDs
-let distance (a: GUID) (b: GUID) : U128 =
-    let (a1, a2) = a
-    let (b1, b2) = b // below: Unsigned shenanigans
-    let n1 = if a1 > b1 then a1 - b1 else b1 - a1
-    let n2 = if a2 > b2 then a2 - b2 else b2 - a2
-    (n1, n2)
+let distance (one: GUID) (two: GUID) : U128 =
+    // Unsigned shenanigans
+    let a = if one.a > two.a then one.a - two.a else two.a - one.a
+    let b = if one.b > two.b then one.b - two.b else two.b - one.b
+    {a = a; b = b}
+
+// Converts a GUID to a string
+let serialize_guid (guid: GUID) : string = sprintf "%020d%020d" guid.a guid.b
+
+// Attempts to convert the given string to a GUID
+let deserialize_guid (str: string) : GUID option =
+    if not (str.Length = 40) then
+        None
+    else
+        let a = str.[..19]
+        let b = str.[20..]
+        try
+            let ua = System.Convert.ToUInt64(a)
+            let ub = System.Convert.ToUInt64(b)
+            Some({a = ua; b = ub}) //
+        with
+            | ex -> None
 
 // Serializes the state of the given node
-let serialize (node: Node) : string = JsonConvert.SerializeObject node
+let serialize (node: Node) : string =
+    let serialize_guid_map m =
+        Map.foldBack (fun k v acc -> Map.add (serialize_guid k) v acc) m Map.empty
+    let leaves = serialize_guid_map node.leaves
+    let neighbors = serialize_guid_map node.neighbors
+    let minleaf = serialize_guid node.minleaf
+    let maxleaf = serialize_guid node.maxleaf
+    let guid = serialize_guid node.guid
+    let routing_table = List.map serialize_guid_map node.routing_table
+    let new_node: SerializableNode =
+        {
+            guid = guid;
+            address = node.address;
+            neighbors = neighbors;
+            leaves = leaves;
+            minleaf = minleaf;
+            maxleaf = maxleaf;
+            routing_table = routing_table;
+        }
+    JsonConvert.SerializeObject new_node
 
 // Deserializes the state of the given node
-let deserialize (json: string) : Node = JsonConvert.DeserializeObject<Node> json
+let deserialize (json: string) : Node =
+    let node = JsonConvert.DeserializeObject<SerializableNode> json
+    let deserialize_safe_guid guid =
+        match deserialize_guid guid with
+        | Some(g) -> g
+        | None -> failwith (sprintf "Attempted to deserialize invalid GUID: %s" guid)
+    let deserialize_guid_map m =
+        Map.foldBack (fun k v acc -> Map.add (deserialize_safe_guid k) v acc) m Map.empty
+    let leaves = deserialize_guid_map node.leaves
+    let neighbors = deserialize_guid_map node.neighbors
+    let minleaf = deserialize_safe_guid node.minleaf
+    let maxleaf = deserialize_safe_guid node.maxleaf
+    let guid = deserialize_safe_guid node.guid
+    let routing_table = List.map deserialize_guid_map node.routing_table
+    let new_node: Node =
+        {
+            guid = guid;
+            address = node.address;
+            neighbors = neighbors;
+            leaves = leaves;
+            minleaf = minleaf;
+            maxleaf = maxleaf;
+            routing_table = routing_table;
+        }
+    new_node
 
 // Convert a byte array to an u64. Please don't use an array that is more than
 // 8 bytes long... (tip: You get undefined behavior)
@@ -117,7 +190,6 @@ let to_u64 (byte_arr: byte[]) = // It's this or mapi + foldback ...
 // Get a list of the digits of a GUID as u64s
 // NOTE: (could be u16 with the default value of 'b' (DIGIT_POWER))
 let get_digits (guid: GUID) : uint64 list =
-    let (a, b) = guid
     let get_bytes (x: uint64): byte[] =
         let barr =
             if BitConverter.IsLittleEndian then
@@ -130,12 +202,12 @@ let get_digits (guid: GUID) : uint64 list =
         else
             barr
 
-    let a_bytes = get_bytes a
-    let b_bytes = get_bytes b
+    let a_bytes = get_bytes guid.a
+    let b_bytes = get_bytes guid.b
 
     let rec map_bytes acc = function
     | [] -> acc
-    | b1::b2::tail -> map_bytes ((to_u64 [|b1;b2|])::acc) tail
+    | byte1::byte2::tail -> map_bytes ((to_u64 [|byte1;byte2|])::acc) tail
     | _ -> failwith "This shouldn't happen!"
 
     List.rev (map_bytes [] (List.ofArray (Array.append a_bytes b_bytes)))
@@ -153,19 +225,47 @@ let shared_prefix_length (a: GUID) (b: GUID) =
         | _ -> failwith "This should not happen: The list have different sizes"
     inner (get_digits a) (get_digits b) 0
 
+// Adds the given node as a neighbor if it makes sense (I'm not using this ATM)
+let try_add_neighbor (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
+    if node.neighbors.Count < MAX_LEAVES then
+        { node with neighbors = Map.add guid address node.neighbors; }
+    else
+        node
+
+// Tries to add the given guid/address pair to the node as a leaf
+let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
+    if node.leaves.Count < MAX_LEAVES then // Room for more
+        let minleaf = if guid < node.minleaf then guid else node.minleaf
+        let maxleaf = if guid > node.maxleaf then guid else node.maxleaf
+        let leaves = Map.add guid address node.leaves
+        { node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
+    else
+        if guid > node.minleaf && guid < node.maxleaf then // Within replacement range
+            if guid >= node.guid then
+                let leaves = Map.add guid address (Map.remove node.maxleaf node.leaves)
+                let maxleaf = Map.foldBack (fun k _ acc -> if k > acc then k else acc) leaves guid
+                { node with leaves = leaves; maxleaf = maxleaf; }
+            else
+                let leaves = Map.add guid address (Map.remove node.minleaf node.leaves)
+                let minleaf = Map.foldBack (fun k _ acc -> if k < acc then k else acc) leaves guid
+                { node with leaves = leaves; minleaf = minleaf; }
+        else
+            node
+
 // Handles a message intended for this node
-let handle_message (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
-    printfn "PASTRY: Handling '%A' message '%s'..." typ msg
+let handle_message (node: Node) (typ: MessageType) (message: string) (key: GUID) =
+    printfn "PASTRY: Handling '%A' message '%s'..." typ message
     match typ with
-    | Join ->
-        let firstsep = msg.IndexOf(SEPARATOR)
-        let address = msg.[..firstsep-1]
-        let states = msg.[firstsep + SEPARATOR.Length..]
+    | Join -> // A node is requesting to join, and this is the one with the nearest GUID
+        let firstsep = message.IndexOf(SEPARATOR)
+        let address = message.[..firstsep-1]
+        let states = message.[firstsep + SEPARATOR.Length..]
         // Failure is unimportant here, no?
         ignore <| send_message address JoinState states key
         node
-    | JoinState ->
-        let string_states = msg.Split([|SEPARATOR|], StringSplitOptions.RemoveEmptyEntries)
+
+    | JoinState -> // This node receives the states needed to initialize itself
+        let string_states = message.Split([|SEPARATOR|], StringSplitOptions.RemoveEmptyEntries)
         let states = Array.foldBack (fun str acc -> (deserialize str)::acc) string_states []
 
         let rec last = function
@@ -205,12 +305,28 @@ let handle_message (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
 
         printfn "Neighbors of %A: %A" node.guid neighbors
         printfn "Leaves    of %A: %A" node.guid leaves
-        { node with
-            neighbors = neighbors;
-            leaves = leaves;
-            minleaf = minleaf;
-            maxleaf = maxleaf;
-        }
+        let updated_node =
+            { node with
+                neighbors = neighbors;
+                leaves = leaves;
+                minleaf = minleaf;
+                maxleaf = maxleaf;
+            }
+        let notify guid address =
+            match send_message address Update (serialize updated_node) guid with
+            | Some(_) -> ()
+            | None -> printfn "PASTRY: Failed to notify %A at '%s' of update..." guid address
+        Map.iter notify updated_node.leaves
+        Map.iter notify updated_node.neighbors
+        List.iter (fun map_level -> Map.iter notify map_level) updated_node.routing_table
+        printfn "PASTRY: State after joining: %A" updated_node
+        updated_node
+
+    | Update -> // The node is notified of a new node joining
+        let state = deserialize message
+        let updated_node = try_add_neighbor (try_add_leaf node state.guid state.address) state.guid state.address
+        printfn "PASTRY: State after update: %A" updated_node
+        updated_node
     | _ ->
         node
 
@@ -247,7 +363,19 @@ let route (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
             node
     else
         printfn "PASTRY: Checking routing table..."
-        node
+        printfn "PASTRY: Actually just using the leaf set ATM..."
+        // Same check as above... for laziness
+        let distance_check = fun leafkey _ acc ->
+            if distance leafkey key < distance acc key then leafkey else acc
+        let closest = Map.foldBack distance_check node.leaves node.guid
+        if closest = node.guid then
+            handle_message node typ message key
+        else
+            let address = Map.find closest node.leaves
+            match send_message address typ message key with
+            | None -> error <| sprintf "Failed to send message to %s" address
+            | Some(_) -> ()
+            node
 
 // Converts an IP-address (or any other string) to an u128 (sorta)
 // NOTE: I'm not sure whether this is endian-safe
@@ -257,21 +385,7 @@ let hash (ip_address: NetworkLocation): U128 =
     let a = to_u64 bytes.[..7]
     let b = to_u64 bytes.[8..15]
     //printfn "Hash : a / b : %d / %d" a b
-    (a, b)
-
-// Attempts to convert the given string to a GUID
-let deserialize_guid (str: string) : GUID option =
-    if not (str.Length = 40) then
-        None
-    else
-        let a = str.[..19]
-        let b = str.[20..]
-        try
-            let ua = System.Convert.ToUInt64(a)
-            let ub = System.Convert.ToUInt64(b)
-            Some((ua, ub)) //
-        with
-            | ex -> None
+    {a = a; b = b}
 
 // Makes the given pastry node start listening...
 let start_listening (node: Node) =
@@ -328,10 +442,10 @@ let start_listening (node: Node) =
 
             | "pastry"::stuff -> // only handles '/pastry'
                 let error_message = sprintf "Unrecognized pastry request url: '%s'" path
-                Invalid(error_message, 400, "Illegal action")
+                Invalid(error_message, 404, "Illegal action")
             | _ ->
                 let error_message = sprintf "Not related to pastry: %s" path
-                Invalid(error_message, 404, "Not found")
+                Invalid(error_message, 200, "Not found")
 
         match result with
         | Valid(updated_node) ->
@@ -345,9 +459,8 @@ let start_listening (node: Node) =
 // Creates a local node and makes it join the Pastry network
 let join_network (address: NetworkLocation) (peer: NetworkLocation option) =
     let guid = hash address
-    let (a, b) = guid
-    printfn "? Pastry GUID: %020d%020d" a b
-    let node = {
+    printfn "? Pastry GUID: %020d%020d" guid.a guid.b
+    let node: Node = {
         guid = guid;
         address = address;
         leaves = Map.empty;
