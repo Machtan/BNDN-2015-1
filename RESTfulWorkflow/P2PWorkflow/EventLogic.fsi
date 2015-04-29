@@ -1,4 +1,4 @@
-﻿module Event
+﻿module EventLogic
 
 type Roles = string list            //A list of roles
 type RelationType =                 //The types of relations

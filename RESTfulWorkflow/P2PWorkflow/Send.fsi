@@ -1,4 +1,6 @@
-﻿type GUID = uint64*uint64
+﻿module Send
+
+type GUID = uint64*uint64
 type WorkflowName = string
 type EventName = WorkflowName*string
 
