@@ -2,6 +2,8 @@
 open System
 open System.Security.Cryptography
 open Newtonsoft.Json
+open System.Net
+open System.IO
 
 // Type definitions
 type U128 = uint64 * uint64
@@ -81,7 +83,8 @@ let hash (ip_address: NetworkLocation): U128 =
     let b = to_u64 bytes.[8..15]
     (a, b)
 
-let listen () =
+let listen node =
+    // Listen for a a message
     use listener = new System.Net.HttpListener ()
     listener.Prefixes.Add "http://localhost:8080/"
     listener.Start ()
@@ -97,6 +100,9 @@ let listen () =
         use is = new System.IO.StreamReader(request.InputStream, request.ContentEncoding)
         is.ReadToEnd()
     printfn "Path: %s" path
+
+    // Now interpret what was received
+
 
 let send_message (address: NetworkLocation) (destination: U128) (typ: MessageType) (data: string) =
     try
@@ -140,18 +146,35 @@ let send (node: Node) (msg: string) (address: Address) =
 let forward (node: Node) (msg: string) (dst: GUID) =
     0
 
+// Adapted from https://stackoverflow.com/questions/1069103/how-to-get-my-own-ip-address-in-c
+let get_public_ip () =
+    let request: WebRequest = WebRequest.Create("http://checkip.dyndns.org/")
+    use response: WebResponse = request.GetResponse()
+    use stream: StreamReader = new StreamReader(response.GetResponseStream())
+    let direction = stream.ReadToEnd()
 
+    //Search for the ip in the html
+    let first = direction.IndexOf("Address: ") + 9
+    let last = direction.LastIndexOf("</body>")
+
+    direction.Substring(first, last - first)
 
 // Small-scale testing entry point
 [<EntryPoint>]
 let main args =
-    printfn "Hello world"
-    let m = Map.ofList [("bob", 20); ("alice", 31); ("ben", 10);]
-    let json = JsonConvert.SerializeObject m;
-    printfn "Serialized: %s" json
-    let data = JsonConvert.DeserializeObject<Map<string, int>>json
-    printfn "Deserialized: %A" data
+    //let m = Map.ofList [("bob", 20); ("alice", 31); ("ben", 10);]
+    //let json = JsonConvert.SerializeObject m;
+    //printfn "Serialized: %s" json
+    //let data = JsonConvert.DeserializeObject<Map<string, int>>json
+    //printfn "Deserialized: %A" data
     //listen()
-    join_network "localhost:8080" None
-    join_network "localhost:80" (Some("localhost:8080"))
+    //join_network "localhost:8080" None
+    //join_network "localhost:80" (Some("localhost:8080"))
+    printfn "Public IP-address: %s" (get_public_ip())
+    match args with
+    | [|port; address|] ->
+        ignore () //(start_server workflow (int port))
+    | _ ->
+        printfn "Usage: Event.exe <workflow> <port>"
+    0
     0
