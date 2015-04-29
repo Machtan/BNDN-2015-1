@@ -1,0 +1,13 @@
+name = "Pastry"
+main = "pastry"
+authors = ["Jakob Lautrup Nysom"]
+libraries = [
+    "Newtonsoft.Json"
+]
+
+includes = [
+    "binaries"
+]
+
+[targets] # Dependencies
+pastry = ["Newtonsoft.Json"]
