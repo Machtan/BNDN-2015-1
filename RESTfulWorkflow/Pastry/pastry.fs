@@ -45,7 +45,7 @@ type InterpretResult =
 
 // ====================== CONFIG ======================
 
-let b = 4 // 2^b-1 per row in the routing table
+let DIGIT_POWER = 4 // 2^b-1 per row in the routing table
 let MAX_LEAVES = 16 // or 32
 let SEPARATOR = " SEPARATOR " // This is silly, but safe...
 
@@ -102,6 +102,56 @@ let serialize (node: Node) : string = JsonConvert.SerializeObject node
 
 // Deserializes the state of the given node
 let deserialize (json: string) : Node = JsonConvert.DeserializeObject<Node> json
+
+// Convert a byte array to an u64. Please don't use an array that is more than
+// 8 bytes long... (tip: You get undefined behavior)
+let to_u64 (byte_arr: byte[]) = // It's this or mapi + foldback ...
+    let rec inner arr pos acc =
+        match arr with
+        | [] -> acc
+        | x::xs -> // Use bit shifts to add the correct value
+            inner xs (pos - 1) (acc + ((uint64 x) <<< (8 * pos)))
+    let res: uint64 = 0UL
+    inner (Array.toList byte_arr) (byte_arr.Length - 1) res
+
+// Get a list of the digits of a GUID as u64s
+// NOTE: (could be u16 with the default value of 'b' (DIGIT_POWER))
+let get_digits (guid: GUID) : uint64 list =
+    let (a, b) = guid
+    let get_bytes (x: uint64): byte[] =
+        let barr =
+            if BitConverter.IsLittleEndian then
+                Array.rev (BitConverter.GetBytes(x))
+            else
+                BitConverter.GetBytes(x)
+        let len = Array.length barr
+        if len < 8 then // Pad with zeroes if needed
+            Array.append (Array.zeroCreate (8-len)) barr
+        else
+            barr
+
+    let a_bytes = get_bytes a
+    let b_bytes = get_bytes b
+
+    let rec map_bytes acc = function
+    | [] -> acc
+    | b1::b2::tail -> map_bytes ((to_u64 [|b1;b2|])::acc) tail
+    | _ -> failwith "This shouldn't happen!"
+
+    List.rev (map_bytes [] (List.ofArray (Array.append a_bytes b_bytes)))
+
+// Gets the length of the shared digits between two GUIDs
+let shared_prefix_length (a: GUID) (b: GUID) =
+    let rec inner a_list b_list len =
+        match a_list, b_list with
+        | [], [] -> len
+        | ax::axs, bx::bxs ->
+            if ax = bx then
+                inner axs bxs (len + 1)
+            else
+                len
+        | _ -> failwith "This should not happen: The list have different sizes"
+    inner (get_digits a) (get_digits b) 0
 
 // Handles a message intended for this node
 let handle_message (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
@@ -199,18 +249,8 @@ let route (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
         printfn "PASTRY: Checking routing table..."
         node
 
-// Convert a byte array to an u64. Please don't use an array that is more than
-// 8 bytes long... (tip: You get undefined behavior)
-let to_u64 (byte_arr: byte[]) = // It's this or mapi + foldback ...
-    let rec inner arr pos acc =
-        match arr with
-        | [] -> acc
-        | x::xs -> // Use bit shifts to add the correct value
-            inner xs (pos - 1) (acc + ((uint64 x) <<< (8 * pos)))
-    let res: uint64 = 0UL
-    inner (Array.toList byte_arr) (byte_arr.Length - 1) res
-
 // Converts an IP-address (or any other string) to an u128 (sorta)
+// NOTE: I'm not sure whether this is endian-safe
 let hash (ip_address: NetworkLocation): U128 =
     let content: byte[] = System.Text.Encoding.ASCII.GetBytes(ip_address)
     let bytes: byte[] = (content |> HashAlgorithm.Create("SHA1").ComputeHash).[..15] // 16 first bytes
