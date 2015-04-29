@@ -49,8 +49,11 @@
   <ItemGroup>
     <Compile Include="Program.fs" />
     <None Include="App.config" />
-    <Compile Include="Repository.fsi" />
+    <Compile Include="WorkflowLogic.fsi" />
     <Compile Include="Send.fsi" />
+    <Compile Include="EventLogic.fsi" />
+    <Compile Include="UserLogic.fsi" />
+    <None Include="EventLogic.fsx" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
