@@ -6,30 +6,21 @@ open System.Net
 open System.IO
 open System.Threading
 
-// Type definitions
+// =================== TYPE DEFINITIONS ======================
 type U128 = uint64 * uint64
 type NetworkLocation = string // an url... Maybe something better later
 type GUID = U128 // u128... Maybe something better later
 type Address = NetworkLocation
 
-//type DeliverFunc = string -> GUID -> unit
-//type ForwardFunc = string -> GUID -> GUID -> string * GUID
-//type NewLeafFunc = GUID list -> unit
-
-// ====================== CONFIG ======================
-
-let b = 4 // 2^b-1 per row in the routing table
-let len_L = 16 // or 32
-
-// ====================================================
-
-// UPDATE: send_messsage and start_listening.listen
+// NOTE NOTE NOTE
+// When you UPDATE this:
+// Also update 'send_messsage' and 'start_listening.listen'
 type MessageType =
 | Join      // A new node is joining and requesting states
 | Update    // A new node has been added sucessfully: update to include it
 | JoinState // The state data for a new node
 | Route     // Send a message somewhere
-// Add more persistency commands here
+    // Add more persistency commands here
 
 // The state record of a Pastry node
 type Node = {
@@ -42,6 +33,23 @@ type Node = {
     neighbors: Map<GUID, Address>;  // Physical location proximity (IP address)
     leaves: Map<GUID, Address>;     // GUID-numerically closest nodes
 }
+
+// A result type to simplify the interpretation a little
+type InterpretResult =
+| Valid of Node
+| Invalid of string * int * string
+
+//type DeliverFunc = string -> GUID -> unit
+//type ForwardFunc = string -> GUID -> GUID -> string * GUID
+//type NewLeafFunc = GUID list -> unit
+
+// ====================== CONFIG ======================
+
+let b = 4 // 2^b-1 per row in the routing table
+let MAX_LEAVES = 16 // or 32
+let SEPARATOR = " SEPARATOR " // This is silly, but safe...
+
+// ====================================================
 
 // Just a little formatting
 let error str =
@@ -90,10 +98,11 @@ let distance (a: GUID) (b: GUID) : U128 =
     (n1, n2)
 
 // Serializes the state of the given node
-let serialize (node: Node) : string =
-    JsonConvert.SerializeObject node
+let serialize (node: Node) : string = JsonConvert.SerializeObject node
 
-let SEPARATOR = " SEPARATOR " // This is silly...
+// Deserializes the state of the given node
+let deserialize (json: string) : Node = JsonConvert.DeserializeObject<Node> json
+
 // Handles a message intended for this node
 let handle_message (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
     printfn "PASTRY: Handling '%A' message '%s'..." typ msg
@@ -105,6 +114,53 @@ let handle_message (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
         // Failure is unimportant here, no?
         ignore <| send_message address JoinState states key
         node
+    | JoinState ->
+        let string_states = msg.Split([|SEPARATOR|], StringSplitOptions.RemoveEmptyEntries)
+        let states = Array.foldBack (fun str acc -> (deserialize str)::acc) string_states []
+
+        let rec last = function
+            | head::[] -> head
+            | head::tail -> last tail
+            | _ -> failwith "Unreachable scenario found /o/"
+
+        let A = List.head states    // Physically closest to this node
+        let Z = last states         // GUID-wise  closest to this node
+
+        // Get this node's neighbors (the nodes physically closest to this one)
+        let nfolder k v (acc: Map<GUID, NetworkLocation>) =
+            if acc.Count >= MAX_LEAVES then acc else Map.add k v acc
+        let neighbors = Map.foldBack nfolder A.neighbors (Map.ofList [(A.guid, A.address)])
+
+        // Get this node's leaves (the nodes with MAX_LEAVES/2 smaller and bigger GUIDs)
+        let leaves =
+            let inner_leaves =
+                if Z.leaves.Count < MAX_LEAVES then
+                    Z.leaves
+                else
+                    // The minimum leaf is farther from this node than the maximum
+                    if (distance node.guid Z.minleaf) > (distance node.guid Z.maxleaf) then
+                        Map.remove Z.minleaf Z.leaves
+                    else
+                        Map.remove Z.maxleaf Z.leaves
+            Map.add Z.guid Z.address inner_leaves
+
+        let lfolder k _ (acc: GUID * GUID) =
+            let (minleaf, maxleaf) = acc
+            if k < minleaf then
+                (k, maxleaf)
+            else if k > maxleaf then
+                (minleaf, k)
+            else acc
+        let (minleaf, maxleaf) = Map.foldBack lfolder leaves (node.guid, node.guid)
+
+        printfn "Neighbors of %A: %A" node.guid neighbors
+        printfn "Leaves    of %A: %A" node.guid leaves
+        { node with
+            neighbors = neighbors;
+            leaves = leaves;
+            minleaf = minleaf;
+            maxleaf = maxleaf;
+        }
     | _ ->
         node
 
@@ -119,7 +175,7 @@ let route (node: Node) (typ: MessageType) (msg: string) (key: GUID) =
             // NOTE NOTE NOTE ------- remove later!
             // Simulate some latency on localhost
             printfn "Sleeping before forwarding join..."
-            Thread.Sleep(10000)
+            Thread.Sleep(1000)
             printfn "Done! Continuing..."
 
             sprintf "%s%s%s" msg SEPARATOR (serialize node)
@@ -160,7 +216,7 @@ let hash (ip_address: NetworkLocation): U128 =
     let bytes: byte[] = (content |> HashAlgorithm.Create("SHA1").ComputeHash).[..15] // 16 first bytes
     let a = to_u64 bytes.[..7]
     let b = to_u64 bytes.[8..15]
-    printfn "Hash : a / b : %d / %d" a b
+    //printfn "Hash : a / b : %d / %d" a b
     (a, b)
 
 // Attempts to convert the given string to a GUID
@@ -176,11 +232,6 @@ let deserialize_guid (str: string) : GUID option =
             Some((ua, ub)) //
         with
             | ex -> None
-
-// A result type to simplify the interpretation a little
-type InterpretResult =
-| Valid of Node
-| Invalid of string * int * string
 
 // Makes the given pastry node start listening...
 let start_listening (node: Node) =
