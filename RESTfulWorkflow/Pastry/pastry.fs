@@ -20,10 +20,10 @@ type Address = NetworkLocation
 // When you UPDATE this:
 // Also update 'send_messsage' and 'start_listening.listen'
 type MessageType =
-| Join      // A new node is joining and requesting states
-| Update    // A new node has been added sucessfully: update to include it
-| JoinState // The state data for a new node
-| Route     // Send a message somewhere
+| Join                  // A new node is joining and requesting states
+| Update                // A new node has been added sucessfully: update to include it
+| JoinState             // The state data for a new node
+| Resource of string    // Request a resource somewhere
     // Add more persistency commands here
 
 // The state record of a Pastry node
@@ -53,6 +53,18 @@ type InterpretResult =
 | Valid of Node
 | Invalid of string * int * string
 
+type Destination =
+| Ok of GUID
+| Error of string * int * string
+
+// A function for the resource request func to send requests through
+// partial_resource_url, method, data -> response
+type SendFunc = string -> string -> string -> HttpListenerResponse
+
+// A function to handle resource requests
+// context (for replying to this call!), split_path (without /resources), send_func, state -> state
+type ResourceRequestFunc<'a> = HttpListenerContext -> string list -> SendFunc -> 'a -> 'a
+
 //type DeliverFunc = string -> GUID -> unit
 //type ForwardFunc = string -> GUID -> GUID -> string * GUID
 //type NewLeafFunc = GUID list -> unit
@@ -77,17 +89,21 @@ let split (str: string) (c: char) =
 // be forwarded towards a pastry node, carrying some data
 let send_message (address: NetworkLocation) (typ: MessageType) (message: string) (destination: U128) =
     try
-        let cmd =
-            match typ with
-            | Join      -> "join"
-            | JoinState -> "joinstate"
-            | Update    -> "update"
-            | Route     -> "route"
-        let {a = p1; b = p2} = destination
-        let url = sprintf "http://%s/pastry/%s/%020d%020d" address cmd p1 p2
-        printfn "SEND: %s => %s" url message
-        use w = new System.Net.WebClient ()
-        Some(w.UploadString(url, "POST", message))
+        match typ with
+        | Resource(url) ->
+            failwith "Not implemented"
+        | _ ->
+            let cmd =
+                match typ with
+                | Join          -> "join"
+                | JoinState     -> "joinstate"
+                | Update        -> "update"
+                | Resource(url) -> failwith "Got past a match on 'Resource'"
+            let {a = p1; b = p2} = destination
+            let url = sprintf "http://%s/pastry/%s/%020d%020d" address cmd p1 p2
+            printfn "SEND: %s => %s" url message
+            use w = new System.Net.WebClient ()
+            Some(w.UploadString(url, "POST", message))
     with
         | ex -> None
 
@@ -388,7 +404,7 @@ let hash (ip_address: NetworkLocation): U128 =
     {a = a; b = b}
 
 // Makes the given pastry node start listening...
-let start_listening (node: Node) =
+let start_listening<'a> (node: Node) (handler_arg: ResourceRequestFunc<'a>) (state_arg: 'a) =
     printfn "Initializing..."
     use listener = new System.Net.HttpListener ()
     let basepath = sprintf "http://%s/" node.address
@@ -396,7 +412,11 @@ let start_listening (node: Node) =
     listener.Prefixes.Add basepath
     listener.Start ()
 
-    let rec listen (node: Node) =
+    // A function to handle resource requests
+    // context (for replying to this call!), split_path (without /resources), send_func, state -> state
+    //type ResourceRequestFunc<'a> = HttpListenerContext -> string list -> SendFunc -> 'a -> 'a
+
+    let rec listen (node: Node) (handler: ResourceRequestFunc<'a>) (state: 'a) =
         // Listen for a a message
 
         let cxt      = listener.GetContext()
@@ -427,9 +447,6 @@ let start_listening (node: Node) =
                     | "update" ->
                         reply response "Send attempted!" 200 "Ok"
                         Valid(route node Update body guid)
-                    | "route" ->
-                        reply response "Send attempted!" 200 "Ok"
-                        Valid(route node Route body guid)
                     | "joinstate" ->
                         reply response "Received!" 200 "Ok"
                         Valid(handle_message node JoinState body guid)
@@ -443,21 +460,51 @@ let start_listening (node: Node) =
             | "pastry"::stuff -> // only handles '/pastry'
                 let error_message = sprintf "Unrecognized pastry request url: '%s'" path
                 Invalid(error_message, 404, "Illegal action")
+
+            | "resource"::tail -> // Someone requests a resource
+                let destination =
+                    match tail with
+                    | "user"::name::[] ->
+                        Ok(hash (sprintf "user/%s" name))
+                    | "user"::name::unwanted_stuff ->
+                        let error_message = sprintf "Bad user path '%s'. It should be on the form '/resource/user/<username>'" path
+                        Error(error_message, 400, "Invalid URL")
+                    | "workflow"::workflow::[] ->
+                        Ok(hash (sprintf "workflow/%s" workflow))
+                    | "workflow"::workflow::event::attribute::[] ->
+                        Ok(hash (sprintf "workflow/%s/%s" workflow event))
+                    | "workflow"::badly_formed_path ->
+                        let error_message = sprintf "Bad workflow path '%s'. It should be on the form '/resource/workflow/<name>[/<eventname>/<attribute>]'" path
+                        Error(error_message, 400, "Invalid URL")
+                    | unknown_resource::whatever ->
+                        let error_message = sprintf "Unknown resource type: '%s'" unknown_resource
+                        Error(error_message, 404, "Not found")
+                    | _ ->
+                        Error("Whatever that is, it isn't here", 404, "Not found")
+
+                match destination with
+                | Ok(resource_url) ->
+                    failwith "Not implemented"
+                    //let send_func (partial_resource_url: string) (method: string) (string: data) : HttpListenerResponse =
+                    //    send_message Resource(partial_resource_url)
+                | Error(msg, status, reason) ->
+                    Invalid(msg, status, reason)
             | _ ->
-                let error_message = sprintf "Not related to pastry: %s" path
+                let error_message = sprintf "Not related to this: %s" path
                 Invalid(error_message, 200, "Not found")
 
         match result with
         | Valid(updated_node) ->
-            listen updated_node // Listen again
+            listen updated_node handler state// Listen again
         | Invalid(error_message, status, reason) ->
             error error_message
             reply response error_message status reason
+            listen node handler state
 
-    ignore <| listen node // Start listening
+    ignore <| listen node handler_arg state_arg// Start listening
 
 // Creates a local node and makes it join the Pastry network
-let join_network (address: NetworkLocation) (peer: NetworkLocation option) =
+let join_network<'a> (address: NetworkLocation) (peer: NetworkLocation option) (handler: ResourceRequestFunc<'a>) (state: 'a) =
     let guid = hash address
     printfn "? Pastry GUID: %020d%020d" guid.a guid.b
     let node: Node = {
@@ -471,13 +518,13 @@ let join_network (address: NetworkLocation) (peer: NetworkLocation option) =
     }
     match peer with
     | None ->
-        start_listening node
+        start_listening<'a> node handler state
     | Some(peer) ->
         match send_message peer Join address guid with
         | None ->
             error <| sprintf "Could not establish a connection with peer at '%s'" peer
         | Some(_) ->
-            start_listening node
+            start_listening<'a> node handler state
 
 // Adapted from https://stackoverflow.com/questions/1069103/how-to-get-my-own-ip-address-in-c
 let get_public_ip () =
@@ -509,7 +556,13 @@ let main args =
         let address = sprintf "%s:%s" (if addr = "" then get_public_ip() else addr) port
         printfn "? Joining pastry network at '%s'..." address
         let known_peer = if peer = "" then None else Some(peer)
-        let node = join_network address known_peer
+
+        // Yay!
+        let dummy_handler context path_args sendfunc state =
+            printfn "REPOSITORY: Dummy handler is handling '%A'" path_args
+            state
+
+        let node = join_network address known_peer dummy_handler 0
         ()
         // Start listening...
     | _ ->
