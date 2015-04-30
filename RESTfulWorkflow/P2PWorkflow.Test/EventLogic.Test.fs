@@ -22,7 +22,11 @@ type public Test() =
         //Arrange
         let name, state = ("WorkflowName", "TestEvent"), (true, true, true)
         //Act
-        let event = create_event name state
+        let result = create_event name state
+        let event = match result with
+            | Ok(x) -> x
+            | x     -> failwith (sprintf "ERROR: %A" x)
+
         //Assert
         Assert.AreEqual(event.name, name)
         Assert.AreEqual(event.executed, true)

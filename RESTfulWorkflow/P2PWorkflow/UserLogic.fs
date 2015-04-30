@@ -23,21 +23,27 @@ type ResultUser =
 //Create
 
 /// Creates and returns a new user from a name
-val create_user:                UserName -> ResultUser
+let create_user (user : UserName) : ResultUser =
+    failwith "Not implemented yed."
 
 //Read
 
 /// Metodes used when finding all executabel event for a user 
-val find_executable_events:     User -> Executable
+let find_executable_events (user : User) : Executable =
+    failwith "Not implemented yed."
 
 //Update
 
 /// Adds given workflow roles to a given user and returns the result
-val add_user_roles:             User -> WorkflowName -> Roles -> ResultUser
+let add_user_roles (user : User) (workflow : WorkflowName) (roles : Roles) : ResultUser =
+    failwith "Not implemented yed."
 
 //Delete
 
 /// Deletes given user and returns it if its susesful
-val delete_user:                User -> ResultUser
+let delete_user (user : User) : ResultUser =
+    failwith "Not implemented yed."
+
 /// Removes given workflow roles form given user and returns the result
-val remove_user_roles:          User -> Workflow -> Roles -> ResultUser
+let remove_user_roles (user : User) (workflow : Workflow) (roles : Roles) : ResultUser =
+    failwith "Not implemented yed."

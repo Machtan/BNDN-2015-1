@@ -52,7 +52,10 @@
     <Compile Include="Send.fsi" />
     <Compile Include="EventLogic.fsi" />
     <Compile Include="UserLogic.fsi" />
-    <None Include="EventLogic.fsx" />
+    <Compile Include="EventLogic.fs" />
+    <Compile Include="UserLogic.fs" />
+    <Compile Include="WorkflwLogic.fs" />
+    <Compile Include="Send.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <PropertyGroup>

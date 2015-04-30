@@ -1,4 +1,5 @@
 ﻿module WorkflowLogic
+
 type Roles = string list            //A list of roles
 type WorkflowName = string          // The name of a workflow
 type EventName = WorkflowName*string      // WorkflowName*EventName
@@ -20,22 +21,30 @@ type ResultWorkflow =
 //Create
 
 /// Creates and returns a new workflow from a name
-val create_workflow:            WorkflowName -> ResultWorkflow
+let create_workflow (workflow : WorkflowName) : ResultWorkflow =
+    failwith "Not implemented yed."
 
 //Read
 
 /// Metodes used when finding all executabel event for a user
-val find_executable_with_roles: Workflow -> Roles -> ExecutableInWorkflow
+let find_executable_with_roles (wrkflow : Workflow) (roles : Roles) : ExecutableInWorkflow =
+    failwith "Not implemented yed."
 
 //Update
 
 /// Adds a given event to a given Workflow and returns the result
-val add_event:                  Workflow -> EventName -> ResultWorkflow
+let add_event (workflow : Workflow) (event : EventName) : ResultWorkflow =
+    failwith "Not implemented yed."
 
 //Delete
 
 /// Deletes given workflow and returns it if its susesful
-val delete_workflow:            Workflow -> ResultWorkflow
+let delete_workflow (workflow : Workflow) : ResultWorkflow =
+    failwith "Not implemented yed."
+
 /// Removes given event form given workflow and returns the result
-val remove_event:               Workflow -> EventName -> ResultWorkflow
+let remove_event (workflow : Workflow) (event : EventName) : ResultWorkflow =
+    failwith "Not implemented yed."
+
+
 

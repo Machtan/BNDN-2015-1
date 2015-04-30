@@ -84,24 +84,26 @@ let add_relation_from (event : Event) (relations : RelationType) (eventName : Ev
     Ok({event with fromRelations = event.fromRelations.Add (relations, eventName)})
 
 /// Removes given relation form given event and returns the result
-let remove_relation_to (event : Event) (relation : RelationType) (eventName : EventName) : ResultEvent =
+let remove_relation_to (event : Event) (relation : Relation) : ResultEvent =
     //Dummy
-    if event.toRelations.Contains (relation, eventName)
+    let typ, toEvent = relation
+    if event.toRelations.Contains (typ, toEvent)
     then
-        let toRelation = event.toRelations.Remove (relation, eventName)
-        printfn "Send: Remove fromRelation (%A, %A) to event: %A" relation event.name eventName
+        let toRelation = event.toRelations.Remove (typ, toEvent)
+        printfn "Send: Remove fromRelation (%A, %A) to event: %A" typ event.name toEvent
         Ok({event with toRelations = toRelation})
-    else MissingEvent(sprintf "ERROR: no (%A, %A) relation" relation eventName)
+    else MissingEvent(sprintf "ERROR: no (%A, %A) relation" typ toEvent)
 
 /// Removes given relation form given event and returns the result
-let remove_relation_from (event : Event) (relation : RelationType) (eventName : EventName) : ResultEvent =
+let remove_relation_from (event : Event) (relation : Relation) : ResultEvent =
     //Dummy
-    if event.fromRelations.Contains (relation, eventName)
+    let typ, fromEvent = relation
+    if event.fromRelations.Contains (typ, fromEvent)
     then
-        let fromRelation = event.fromRelations.Remove (relation, eventName)
-        printfn "Send: Remove toRelation (%A, %A) to event: %A" relation event.name eventName
+        let fromRelation = event.fromRelations.Remove (typ, fromEvent)
+        printfn "Send: Remove toRelation (%A, %A) to event: %A" typ event.name fromEvent
         Ok({event with toRelations = fromRelation})
-    else MissingEvent(sprintf "ERROR: no (%A, %A) relation" relation eventName)
+    else MissingEvent(sprintf "ERROR: no (%A, %A) relation" typ fromEvent)
 
 /// Deletes given event and returns it if its susesful
 let delete_event (event : Event) : ResultEvent =
