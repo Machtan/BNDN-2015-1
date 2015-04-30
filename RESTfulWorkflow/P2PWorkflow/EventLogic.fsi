@@ -8,7 +8,6 @@ type RelationType =                 //The types of relations
     | Inclusion
 type WorkflowName = string                  // The name of a workflow
 type EventName = WorkflowName*string        // WorkflowName*EventName
-type EventState = bool*bool*bool            // Executed*Pending*Includet
 type UserName = string                      // The name of a user
 
 type Relation = RelationType*EventName      // A relation containd by a event
@@ -18,12 +17,18 @@ type FromRelations = Set<Relation>
 // We only really use this as the state singleton (which is nice, tho)
 type Event = {
     name: EventName;
-    executed: bool;
-    pending: bool;
     included: bool;
+    pending: bool;
+    executed: bool;
     toRelations: ToRelations;
     fromRelations: FromRelations;
     roles: Roles;
+}
+
+type EventState = {
+    included: bool;
+    pending: bool;
+    executed: bool;
 }
 
 // posible results when working with events
@@ -31,7 +36,8 @@ type ResultEvent =
     | Ok of Event
     | Unauthorized
     | NotExecutable
-    | MissingEvent of string
+    | MissingRelation
+    | Error of string
     | LockConflict
 
 //Create
