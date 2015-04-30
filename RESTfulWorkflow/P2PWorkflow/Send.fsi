@@ -1,4 +1,5 @@
-﻿type GUID = uint64*uint64
+﻿module WorkFlowLogic
+type GUID = uint64*uint64
 type WorkflowName = string
 type EventName = WorkflowName*string
 
