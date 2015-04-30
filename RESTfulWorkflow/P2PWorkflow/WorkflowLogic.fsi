@@ -1,4 +1,5 @@
 ﻿module Workflow
+
 type Roles = string list            //A list of roles
 type WorkflowName = string          // The name of a workflow
 type EventName = WorkflowName*string      // WorkflowName*EventName

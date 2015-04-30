@@ -47,10 +47,15 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Program.fs" />
+    <Compile Include="UserLogic.fsi" />
+    <Compile Include="WorkflowLogic.fsi" />
     <None Include="App.config" />
-    <Compile Include="Repository.fsi" />
     <Compile Include="Send.fsi" />
+    <Compile Include="EventLogic.fsi" />
+    <Compile Include="WorkflowOld.fs" />
+    <Compile Include="RestAPI.fsi" />
+    <Compile Include="RestAPI.fs" />
+    <Compile Include="Program.fs" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
