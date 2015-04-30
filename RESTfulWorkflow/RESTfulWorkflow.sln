@@ -17,6 +17,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "EasyClient", "EasyClient\Ea
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "P2PWorkflow", "P2PWorkflow\P2PWorkflow.fsproj", "{D9F53305-9057-4215-9AEC-6C2466815A60}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "P2PWorkflow.Test", "P2PWorkflow.Test\P2PWorkflow.Test.fsproj", "{D4FCA05E-805D-4CD6-B23C-90AAFC9652C9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -51,6 +53,10 @@ Global
 		{D9F53305-9057-4215-9AEC-6C2466815A60}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D9F53305-9057-4215-9AEC-6C2466815A60}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D9F53305-9057-4215-9AEC-6C2466815A60}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4FCA05E-805D-4CD6-B23C-90AAFC9652C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4FCA05E-805D-4CD6-B23C-90AAFC9652C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4FCA05E-805D-4CD6-B23C-90AAFC9652C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4FCA05E-805D-4CD6-B23C-90AAFC9652C9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,5 +1,4 @@
-
-module Send
+﻿module Send
 
 type GUID = uint64*uint64
 type WorkflowName = string
@@ -18,5 +17,6 @@ type Message =
 | FindExecutableWithRoles   of WorkflowName*string list // workflow, roles
 
 /// Sends given message with the use of pastery.fs
-val send: Message -> unit
+let send (message : Message) : unit =
+    failwith "Not implemented yed."
 

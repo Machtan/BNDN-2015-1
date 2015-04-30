@@ -1,6 +1,6 @@
-﻿module Event
+﻿module EventLogic
 
-type Roles = string list            //A list of roles
+type Roles = Set<string>           //A list of roles
 type RelationType =                 //The types of relations
     | Dependent
     | Exclusion
@@ -12,9 +12,19 @@ type EventState = bool*bool*bool            // Executed*Pending*Includet
 type UserName = string                      // The name of a user
 
 type Relation = RelationType*EventName      // A relation containd by a event
-type ToRelations = Relation list
-type FromRelations = Relation list
-type Event = EventName*EventState*ToRelations*FromRelations*Roles // all nessary information for a event
+type ToRelations = Set<Relation>
+type FromRelations = Set<Relation>
+
+// We only really use this as the state singleton (which is nice, tho)
+type Event = {
+    name: EventName;
+    executed: bool;
+    pending: bool;
+    included: bool;
+    toRelations: ToRelations;
+    fromRelations: FromRelations;
+    roles: Roles;
+}
 
 // posible results when working with events
 type ResultEvent =
@@ -33,7 +43,8 @@ val create_event:               EventName -> EventState -> ResultEvent
 
 /// Return name and state of given event
 val get_event_state:            Event -> string*EventState
-//VI MANGLER EN CHECK ROLES!!!
+/// Check if given event have one of given roles
+val check_roles:                Event -> Roles -> bool
 
 //Update
 
@@ -53,6 +64,6 @@ val delete_event:               Event -> ResultEvent
 /// Removes given roles form given event and returns the result
 val remove_event_roles:         Event -> Roles -> ResultEvent
 /// Removes given relation form given event and returns the result
-val remove_relation_to:         Event -> Relation -> EventName -> ResultEvent
+val remove_relation_to:         Event -> Relation -> ResultEvent
 /// Removes given relation form given event and returns the result
-val remove_relation_from:       Event -> Relation -> EventName -> ResultEvent
+val remove_relation_from:       Event -> Relation -> ResultEvent
