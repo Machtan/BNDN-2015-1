@@ -1,3 +1,5 @@
+module PastryHTTP
+
 // Source: http://www.fssnip.net/br
 open System
 open System.Net

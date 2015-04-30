@@ -1,3 +1,5 @@
+module Pastry
+
 // Created by Jakob Lautrup Nysom 2015-04-24
 open System
 open System.Security.Cryptography
