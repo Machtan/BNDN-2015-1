@@ -1,5 +1,5 @@
-name = "Pastry"
-main = "pastry_demo"
+name = "PastryDemo"
+main = "PastryDemo"
 authors = ["Jakob Lautrup Nysom"]
 libraries = [
     "Newtonsoft.Json"
@@ -10,7 +10,7 @@ includes = [
 ]
 
 [targets] # Dependencies
-pastry = ["pastry_types", "pastry_utils"]
-pastry_types = []
-pastry_utils = ["pastry_types", "Newtonsoft.Json"]
-pastry_demo = ["pastry"]
+Pastry = ["PastryTypes", "PastryUtils"]
+PastryTypes = []
+PastryUtils = ["PastryTypes", "Newtonsoft.Json"]
+PastryDemo = ["Pastry"]

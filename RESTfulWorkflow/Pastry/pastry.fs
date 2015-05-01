@@ -1,22 +1,12 @@
-module pastry
+module Pastry
 
 // Created by Jakob Lautrup Nysom 2015-04-24
 open System
 open System.Net
 open System.Threading
 
-open pastry_types
-open pastry_utils
-
-type NetworkLocation = string
-
-// A function for the resource request func to send requests through
-// partial_resource_url, method, data, state -> state, response
-type SendFunc<'a> = string -> string -> string -> 'a -> 'a * string
-
-// A function to handle resource requests
-// url, method, send_func, state -> state, response
-type ResourceRequestFunc<'a> = string -> string -> SendFunc<'a> -> 'a -> 'a * string
+open PastryTypes
+open PastryUtils
 
 // ====================== CONFIG ======================
 

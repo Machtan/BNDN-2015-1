@@ -1,4 +1,4 @@
-module pastry_types
+module PastryTypes
 
 open System
 open System.Net
@@ -53,3 +53,11 @@ type InterpretResult<'a> =
 type Destination =
 | Ok of GUID
 | Error of string * int * string
+
+// A function for the resource request func to send requests through
+// partial_resource_url, method, data, state -> state, response
+type SendFunc<'a> = string -> string -> string -> 'a -> 'a * string
+
+// A function to handle resource requests
+// url, method, send_func, state -> state, response
+type ResourceRequestFunc<'a> = string -> string -> SendFunc<'a> -> 'a -> 'a * string

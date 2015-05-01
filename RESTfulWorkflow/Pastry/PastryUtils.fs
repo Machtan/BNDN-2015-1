@@ -1,4 +1,4 @@
-module pastry_utils
+module PastryUtils
 
 open System
 open System.Security.Cryptography
@@ -6,7 +6,7 @@ open System.IO
 open System.Net
 open Newtonsoft.Json
 
-open pastry_types
+open PastryTypes
 
 // Just a little formatting
 let error str =

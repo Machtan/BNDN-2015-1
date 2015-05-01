@@ -1,4 +1,4 @@
-open pastry
+open Pastry
 
 // Small-scale testing entry point
 [<EntryPoint>]
