@@ -1,21 +1,6 @@
 module WorkflowLogic
-type Roles = string list            //A list of roles
-type WorkflowName = string          // The name of a workflow
-type EventName = WorkflowName*string      // WorkflowName*EventName
-type EventState = bool*bool*bool    // Executed*Pending*Includet
 
-type Workflow = WorkflowName*(EventName list)  // The name of a workflow and the events it contain
-
-// Shemas used when finding all executabel event for a user
-type ExecutableInWorkflow = WorkflowName*(string*EventState list)
-
-// posible results when working with workflows
-type ResultWorkflow =
-    | Ok of Workflow
-    | Unauthorized
-    | NotExecutable
-    | MissingEvent of string
-
+open Repository_types
 
 //Create
 

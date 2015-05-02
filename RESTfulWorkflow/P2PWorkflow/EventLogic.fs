@@ -1,45 +1,6 @@
 ﻿module EventLogic
 
-type Roles = Set<string>           //A list of roles
-type RelationType =                 //The types of relations
-    | Dependent
-    | Exclusion
-    | Response
-    | Inclusion
-type WorkflowName = string                  // The name of a workflow
-type EventName = WorkflowName*string        // WorkflowName*EventName
-type UserName = string                      // The name of a user
-
-type Relation = RelationType*EventName      // A relation containd by a event
-type ToRelations = Set<Relation>
-type FromRelations = Set<Relation>
-
-// We only really use this as the state singleton (which is nice, tho)
-type Event = {
-    name: EventName;
-    included: bool;
-    pending: bool;
-    executed: bool;
-    toRelations: ToRelations;
-    fromRelations: FromRelations;
-    roles: Roles;
-}
-
-// included, pending, executed
-type EventState = {
-    included: bool;
-    pending: bool;
-    executed: bool;
-}
-
-// posible results when working with events
-type ResultEvent =
-    | Ok of Event
-    | Unauthorized
-    | NotExecutable
-    | MissingRelation
-    | Error of string
-    | LockConflict
+open Repository_types
 
 /// Creates and returns a new event from a name and a start state
 let create_event (name : EventName) (state : EventState) : ResultEvent =

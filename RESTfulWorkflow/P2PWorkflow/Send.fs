@@ -1,8 +1,8 @@
 ﻿module Send
 
+open Repository_types
+
 type GUID = uint64*uint64
-type WorkflowName = string
-type EventName = WorkflowName*string
 
 type Message =
 | Forward                   of GUID*GUID*string*string  //origin, destination, url, data

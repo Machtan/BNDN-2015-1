@@ -46,15 +46,20 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
   </ItemGroup>
-  <ItemGroup> 
-    <Compile Include="UserLogic.fsi" />
-    <Compile Include="WorkflowLogic.fsi" />
-    <None Include="App.config" />
-    <Compile Include="Send.fsi" />
+  <ItemGroup>
+    <Compile Include="Repository_types.fs" />
     <Compile Include="EventLogic.fsi" />
+    <Compile Include="EventLogic.fs" />
+    <Compile Include="WorkflowLogic.fsi" />
+    <Compile Include="WorkflwLogic.fs" />
+    <Compile Include="UserLogic.fsi" />
+    <Compile Include="UserLogic.fs" />
+    <Compile Include="Send.fsi" />
+    <Compile Include="Send.fs" />
+    <None Include="App.config" />
     <Compile Include="WorkflowOld.fs" />
     <Compile Include="RestAPI.fsi" />
-    <Compile Include="RestAPI.fs" /> 
+    <Compile Include="RestAPI.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <PropertyGroup>
