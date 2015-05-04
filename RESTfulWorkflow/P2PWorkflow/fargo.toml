@@ -1,0 +1,19 @@
+name = "P2PWorkflow"
+main = "Repository"
+authors = ["Jakob Lautrup Nysom", "Patrick Evers Bjørkman", "Stinus Møhl Thomsen"]
+libraries = [
+    "Newtonsoft.Json",
+    "Pastry",
+]
+
+includes = [
+    "binaries"
+]
+
+[targets] # Dependencies
+Send = ["Repository_types"]
+Repository_types = []
+EventLogic = ["Repository_types"]
+UserLogic = ["Repository_types"]
+WorkflowLogic = ["Repository_types"]
+Repository = ["Repository_types", "EventLogic", "WorkflowLogic", "UserLogic", "Pastry"]
