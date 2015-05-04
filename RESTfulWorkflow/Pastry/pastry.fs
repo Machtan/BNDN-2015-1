@@ -146,7 +146,7 @@ let handle_join (node: Node) (message: string): Node =
 // Handles a message intended for this node
 let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: GUID)
         (handler: ResourceRequestFunc<'a>) (send_func: SendFunc<'a>) (state: 'a)
-        : Node * 'a * (string option) =
+        : Node * 'a * ((string * int) option) =
     printfn "PASTRY: Handling '%A' message '%s'..." typ message
     match typ with
     | Join -> // A node is requesting to join, and this is the one with the nearest GUID
@@ -170,8 +170,8 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
 
     | Resource(path, meth) -> // Request for a resource here
         printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
-        let (state', resp) = handler path meth send_func state
-        node, state', Some(resp)
+        let (state', resp, status) = handler path meth send_func state
+        node, state', Some((resp, status))
 
 // Messages
 // Join: join address
