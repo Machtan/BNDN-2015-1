@@ -1,5 +1,5 @@
 name = "P2PWorkflow"
-main = "Repository"
+main = "RestAPI"
 authors = ["Jakob Lautrup Nysom", "Patrick Evers Bjørkman", "Stinus Møhl Thomsen"]
 libraries = [
     "Newtonsoft.Json",
@@ -16,4 +16,4 @@ Repository_types = []
 EventLogic = ["Repository_types"]
 UserLogic = ["Repository_types"]
 WorkflowLogic = ["Repository_types"]
-Repository = ["Repository_types", "EventLogic", "WorkflowLogic", "UserLogic", "Pastry"]
+RestAPI = ["Repository_types", "EventLogic", "WorkflowLogic", "UserLogic", "Pastry"]

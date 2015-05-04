@@ -56,8 +56,8 @@ open Pastry
 // From pastry, basically
 type SendFunc<'a> = string -> string -> string -> 'a -> 'a * string
 
-// Same, I guess
-type ResourceResponse<'a> = 'a * string
+// Updated state, response, status code
+type ResourceResponse<'a> = 'a * string * int
 
 // Creates a new repository
 let create_repository () : Repository =
@@ -81,14 +81,36 @@ let handle_user (user_name: string) (meth: string) (repo: Repository) : Resource
     | "GET" -> // Get the workflow permissions of a user
         match Map.tryFind user_name repo.users with
         | None ->
-            repo, "User not found"
+            repo, "User not found", 404
         | Some(user) ->
-            repo, serialize_user_permissions user
+            repo, serialize_user_permissions user, 200
     | _ ->
         repo, "Unsupported user operation"
 
+// So amazing
+let SEPARATOR = "\n"
+
 // Handles requests for the givien workflow (getting the events in it)
-let handle_workflow (wf: string) (meth: string) (state: Repository) : ResourceResponse<Repository> =
+let handle_workflow (wf: string) (meth: string) (repo: Repository) : ResourceResponse<Repository> =
+    match meth with
+    | "GET" ->
+        match Map.tryFind wf repo.workflows with
+        | None ->
+            repo, "Could not find workflow", 404
+        | Some(event_name_list) ->
+            String.concat SEPARATOR event_name_list
+    | "POST" ->
+        match Map.tryFind wf repo.workflows with
+        | None ->
+            ignore <| create_workflow wf
+            failwith "Not Implemented"
+        | Some(_) ->
+            repo, "Workflow already exists!", 400
+    | "DELETE" ->
+        
+    | _ ->
+        repo, "Unsupported workflow operation", 400,
+
     failwith "Not Implemented"
 
 // Attempts to find an event in the given repository
@@ -103,7 +125,7 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
     // Find the event in this repository if it exists
     match find_event workflow_name event_name repo with
     | None ->
-        repo, "Event not found!"
+        repo, "Event not found!", 404
     | Some(locked, event) ->
         // Find out what needs to be done
         let response =
@@ -154,7 +176,7 @@ let resource_handler (path: string) (meth: string) (send_func: SendFunc<Reposito
             handle_event workflow event attribute meth initial_state
         | _ ->
             printfn "Invalid path gotten: %s" path
-            initial_state, "Invalid path"
+            initial_state, "Invalid path", 400
     response
 
 [<EntryPoint>]
