@@ -56,19 +56,106 @@ open Pastry
 // From pastry, basically
 type SendFunc<'a> = string -> string -> string -> 'a -> 'a * string
 
-type Repository = {
-    logs: string list;
-}
+// Same, I guess
+type ResourceResponse<'a> = 'a * string
+
+// Creates a new repository
+let create_repository () : Repository =
+    { events = Map.empty; users = Map.empty; workflows = Map.empty; logs = []; }
+
+// Splits a string at a char 'yay'
+let split (str: string) (c: char) =
+    List.ofArray (str.Split([|c|]))
+
+// Serializes the permissions of a given user for HTTP transfer
+let serialize_user_permissions (user: User) : string =
+    "Not Implemented"
+
+// Matches the given user and
+let handle_user (user_name: string) (meth: string) (repo: Repository) : ResourceResponse<Repository> =
+    match meth with
+    | "POST" -> // Create a new user
+        failwith "Not Implemented"
+    | "DELETE" -> // Delete a user
+        failwith "Not Implemented"
+    | "GET" -> // Get the workflow permissions of a user
+        match Map.tryFind user_name repo.users with
+        | None ->
+            repo, "User not found"
+        | Some(user) ->
+            repo, serialize_user_permissions user
+    | _ ->
+        repo, "Unsupported user operation"
+
+// Handles requests for the givien workflow (getting the events in it)
+let handle_workflow (wf: string) (meth: string) (state: Repository) : ResourceResponse<Repository> =
+    failwith "Not Implemented"
+
+// Attempts to find an event in the given repository
+let find_event (workflow: string) (event: string) (repo: Repository): (bool * Event) option =
+    match Map.tryFind workflow repo.events with
+    | None -> None
+    | Some(map) -> Map.tryFind event map
+
+// Matches the given event and tries to handle the request
+let handle_event (workflow_name: string) (event_name: string) (attribute: string)
+        (meth: string) (repo: Repository) : ResourceResponse<Repository> =
+    // Find the event in this repository if it exists
+    match find_event workflow_name event_name repo with
+    | None ->
+        repo, "Event not found!"
+    | Some(locked, event) ->
+        // Find out what needs to be done
+        let response =
+            match meth, attribute with
+            | "POST", "" ->
+                failwith "Not Implemented"//createEvent event body initialState
+            | "DELETE", "" ->
+                failwith "Not Implemented"
+            | "GET", "executed" ->
+                failwith "Not Implemented"//getExecuted event initialState
+            | "PUT", "executed" ->
+                failwith "Not Implemented"//setExecuted event body initialState
+            | "GET", "pending" ->
+                failwith "Not Implemented"//getPending event initialState
+            | "GET", "included" ->
+                failwith "Not Implemented"// getIncluded event initialState
+            | "GET", "executable" ->
+                failwith "Not Implemented"//getExecutable event initialState
+            | "POST", relation ->
+                match relation with
+                | "exclusion"   -> ()//Some (Exclusion dest)
+                | "condition"   -> ()//Some (Dependent dest)
+                | "response"    -> ()//Some (Response dest)
+                | "inclusion"   -> ()//Some (Inclusion dest)
+                | _             -> ()//None
+                failwith "Not Implemented"
+            | _ ->
+                failwith "Not Implemented"//"Unsupported operation", 404, "Not found", initialState
+        response
 
 // The actual resource handling function
 let resource_handler (path: string) (meth: string) (send_func: SendFunc<Repository>)
-        (state: Repository) : Repository * string =
-    failwith "Not Implemented"
+        (initial_state: Repository) : ResourceResponse<Repository> =
 
+    let parts = split path '/'
+    let response =
+        //printfn "Parts: %A" parts
+        match parts with
+        | [] ->
+            initial_state, "Nothing asked, nothing found."
+        | "user"::user::[] ->
+            handle_user user meth initial_state
 
+        | "workflow"::workflow::[] ->
+            handle_workflow workflow meth initial_state
 
-
-
+        | "workflow"::workflow::event::attribute::[] ->
+            handle_event workflow event attribute meth initial_state
+        | _ ->
+            printfn "Invalid path gotten: %s" path
+            initial_state, "Invalid path"
+    response
 
 [<EntryPoint>]
 let main args =
@@ -78,13 +165,7 @@ let main args =
             printfn "? Joining pastry network at '%s'..." address
             let known_peer = if peer = "" then None else Some(peer)
 
-            // url, method, send_func, state -> state, response
-            // Yay!
-            let dummy_handler path meth send_func (state: 'a) : 'a * string =
-                printfn "REPOSITORY: Dummy handler is handling '%s' '%s'" meth path
-                state, "Hello World"
-
-            let node = start_server address known_peer dummy_handler 0
+            let node = start_server address known_peer resource_handler <| create_repository()
             0
             // Start listening...
         | _ ->
