@@ -16,9 +16,31 @@ let SEPARATOR = " SEPARATOR " // This is silly, but safe...
 
 // ====================================================
 
+// ============ TYPES FOR THE INTERFACE ===============
+// Updated state, response, status code
+type ResourceResponse<'a> = 'a * string * int
+
+// A function for the resource request func to send requests through
+// partial_resource_url, method, data, state -> response
+type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
+
+// A function to handle resource requests
+// url, method, send_func, state -> response
+type ResourceRequestFunc<'a> = string -> string -> SendFunc<'a> -> 'a -> ResourceResponse<'a>
+
+// ====================================================
+
+// A dummy for testing
+let DUMMY_SEND_FUNC resource_url meth data (state: 'a) : ResourceResponse<'a> =
+    failwith "Dummy SendFunc called! (how did this happen?)"
+
+// A dummy for testing
+let DUMMY_HANDLER resource_url meth send_func (state: 'a) : ResourceResponse<'a> =
+    failwith "Dummy ResourceRequestFunc called (how did this happen?)"
+
 // Sends a pastry message to a node at an address, that a type of message must
 // be forwarded towards a pastry node, carrying some data
-let send_message (address: NetworkLocation) (typ: MessageType) (message: string) (destination: U128) : string option =
+let send_message (address: NetworkLocation) (typ: MessageType) (message: string) (destination: U128) : (string * int) option =
     try
         match typ with
         | Resource(path, meth) ->
@@ -27,9 +49,9 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
             use w = new System.Net.WebClient ()
             match meth with
             | "GET" ->
-                Some(w.DownloadString(url + "?data="+message)) // TODO make safer
+                Some((w.DownloadString(url + "?data="+message)), 200)// TODO make safer
             | _ ->
-                Some(w.UploadString(url, meth, message))
+                Some((w.UploadString(url, meth, message)), 200)
         | _ ->
             let cmd =
                 match typ with
@@ -41,7 +63,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
             let url = sprintf "http://%s/pastry/%s/%020d%020d" address cmd p1 p2
             printfn "SEND: %s => %s" url message
             use w = new System.Net.WebClient ()
-            Some(w.UploadString(url, "POST", message))
+            Some((w.UploadString(url, "POST", message), 200))
     with
         | ex -> None
 
@@ -178,7 +200,7 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
 // Routes a message somewhere
 let route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
         (handler: ResourceRequestFunc<'a>) (send_func: SendFunc<'a>) (state: 'a)
-        : Node * 'a * (string option) =
+        : Node * 'a * ((string * int) option) =
     printfn "PASTRY: Routing '%A' message towards '%A'" typ key
     let message =
         match typ with // This is actually okay since the nodes contain no strings
@@ -251,24 +273,24 @@ let try_forward_resource<'a> (node: Node) (split_res_path: string list) (meth: s
     match get_destination split_res_path with
     | Ok(guid) ->
         // Construct the message function used by the repo to route messages out
-        let rec send_func (resource_path: string) (meth: string) (data: string) (state: 'a): 'a * string =
+        let rec send_func (resource_path: string) (meth: string) (data: string) (state: 'a): ResourceResponse<'a> =
             match get_destination (split resource_path '/') with
             | Ok(guid) ->
                 let (node', state', resp_msg) = route node (Resource(resource_path, meth)) data guid handler (send_func) state
-                let resp =
-                    match resp_msg with
-                    | Some(str) -> str
-                    | None -> failwith "ASSERT FAILED: The resource request did not return a string"
-                (state', resp)
+                match resp_msg with
+                | Some((resp, status)) ->
+                    (state', resp, status)
+                | None ->
+                    failwith "ASSERT FAILED: The resource request did not return a string"
             | Error(resp, status, reason) ->
                 error <| sprintf "Could not send '%s' message from repo to '%s'" meth resource_path
-                (state, resp)
+                (state, resp, status)
 
         let resource_url = String.concat "/" split_res_path
-        let (node', state', resp_msg) = route node (Resource(resource_url, meth)) data guid handler (send_func) outer_state
-        match resp_msg with // If there was some response from the routing just now:
-        | Some(str) ->
-            reply response str 200 "Ok"
+        let (node', state', resp) = route node (Resource(resource_url, meth)) data guid handler (send_func) outer_state
+        match resp with // If there was some response from the routing just now:
+        | Some((message, status)) ->
+            reply response message status "Ok"
         | None ->
             failwith <| sprintf "PASTRY: No response gotten when routing resource towards '%s' at '%s'" resource_url (serialize_guid guid)
         Valid(node', state')

@@ -12,7 +12,7 @@ let main args =
 
         // url, method, send_func, state -> state, response
         // Yay!
-        let dummy_handler path meth send_func (state: 'a) : 'a * string =
+        let dummy_handler path meth send_func (state: 'a) : ResourceResponse<'a> =
             printfn "REPOSITORY: Dummy handler is handling '%s' '%s'" meth path
             state, "Hello World", 200
 
