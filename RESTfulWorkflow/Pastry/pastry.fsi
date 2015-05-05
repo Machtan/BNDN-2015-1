@@ -2,6 +2,17 @@ module Pastry
 
 open PastryTypes
 
+// Updated state, response, status code
+type ResourceResponse<'a> = 'a * string * int
+
+// A function for the resource request func to send requests through
+// partial_resource_url, method, data, state -> response
+type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
+
+// A function to handle resource requests
+// url, method, send_func, state -> response
+type ResourceRequestFunc<'a> = string -> string -> SendFunc<'a> -> 'a -> ResourceResponse<'a>
+
 // Creates a local node and makes it join the Pastry network
 // Whenever a request for a resource enters, the resource request func is called
 // Thes send func is for the resource handler to request other resources with

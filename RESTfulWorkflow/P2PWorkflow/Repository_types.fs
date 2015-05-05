@@ -39,8 +39,10 @@ type Event = {
 }
 
 type Repository = {
+    // workflow name: event name: (locked, state)
     events: Map<string, Map<string, bool*Event>>;
     users:  Map<string, User>;
+    // workflow name: [event name]
     workflows: Map<string, string list>;
     logs: string list;
 }

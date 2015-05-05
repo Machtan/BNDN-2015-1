@@ -184,11 +184,3 @@ let get_destination (resource_url: string list): Destination =
         Error(error_message, 404, "Not found")
     | _ ->
         Error("Whatever that is, it isn't here", 404, "Not found")
-
-// A dummy for testing
-let DUMMY_SEND_FUNC resource_url meth data state : 'a * string=
-    failwith "Dummy SendFunc called! (how did this happen?)"
-
-// A dummy for testing
-let DUMMY_HANDLER resource_url meth send_func state : 'a * string=
-    failwith "Dummy ResourceRequestFunc called (how did this happen?)"
