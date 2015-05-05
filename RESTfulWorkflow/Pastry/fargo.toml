@@ -13,4 +13,4 @@ includes = [
 Pastry = ["PastryTypes", "PastryUtils"]
 PastryTypes = []
 PastryUtils = ["PastryTypes", "Newtonsoft.Json"]
-PastryDemo = ["Pastry"]
+PastryDemo = ["Pastry", "Newtonsoft.Json"]

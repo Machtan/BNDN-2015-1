@@ -17,6 +17,7 @@ let SEPARATOR = " SEPARATOR " // This is silly, but safe...
 // ====================================================
 
 // ============ TYPES FOR THE INTERFACE ===============
+
 // Updated state, response, status code
 type ResourceResponse<'a> = 'a * string * int
 
@@ -28,19 +29,23 @@ type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
 // url, method, send_func, state -> response
 type ResourceRequestFunc<'a> = string -> string -> SendFunc<'a> -> 'a -> ResourceResponse<'a>
 
+// A function to serialize the state passed through pastry
+type SerializeFunc<'a> = 'a -> string
+
+// A record containing the types needed to inter properly with the pastry
+// network
+type PastryInterface<'a> = {
+    send: SendFunc<'a> option;
+    handle: ResourceRequestFunc<'a>;
+    serialize: SerializeFunc<'a>;
+    state: 'a;
+}
+
 // ====================================================
-
-// A dummy for testing
-let DUMMY_SEND_FUNC resource_url meth data (state: 'a) : ResourceResponse<'a> =
-    failwith "Dummy SendFunc called! (how did this happen?)"
-
-// A dummy for testing
-let DUMMY_HANDLER resource_url meth send_func (state: 'a) : ResourceResponse<'a> =
-    failwith "Dummy ResourceRequestFunc called (how did this happen?)"
 
 // Sends a pastry message to a node at an address, that a type of message must
 // be forwarded towards a pastry node, carrying some data
-let send_message (address: NetworkLocation) (typ: MessageType) (message: string) (destination: U128) : (string * int) option =
+let send_message (address: NetworkLocation) (typ: MessageType) (message: string) (destination: GUID) : (string * int) option =
     try
         match typ with
         | Resource(path, meth) ->
@@ -58,9 +63,9 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
                 | Join          -> "join"
                 | JoinState     -> "joinstate"
                 | Update        -> "update"
+                | Backup        -> "backup"
                 | Resource(_)   -> failwith "Got past a match on 'Resource'"
-            let {a = p1; b = p2} = destination
-            let url = sprintf "http://%s/pastry/%s/%020d%020d" address cmd p1 p2
+            let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
             printfn "SEND: %s => %s" url message
             use w = new System.Net.WebClient ()
             Some((w.UploadString(url, "POST", message), 200))
@@ -106,7 +111,7 @@ let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
         else
             node
 
-// Handles a pastry join request
+// Handles a pastry join request (this node getting the things needed to join)
 let handle_join (node: Node) (message: string): Node =
     let string_states = message.Split([|SEPARATOR|], StringSplitOptions.RemoveEmptyEntries)
     let states = Array.foldBack (fun str acc -> (deserialize str)::acc) string_states []
@@ -167,8 +172,7 @@ let handle_join (node: Node) (message: string): Node =
 
 // Handles a message intended for this node
 let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: GUID)
-        (handler: ResourceRequestFunc<'a>) (send_func: SendFunc<'a>) (state: 'a)
-        : Node * 'a * ((string * int) option) =
+        (inter: PastryInterface<'a>) : Node * 'a * ((string * int) option) =
     printfn "PASTRY: Handling '%A' message '%s'..." typ message
     match typ with
     | Join -> // A node is requesting to join, and this is the one with the nearest GUID
@@ -177,30 +181,36 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
         let states = message.[firstsep + SEPARATOR.Length..]
         // Failure is unimportant here, no?
         ignore <| send_message address JoinState states key
-        node, state, None
+        node, inter.state, None
 
     | JoinState -> // This node receives the states needed to initialize itself
         let updated_node = handle_join node message
-        updated_node, state, None
+        updated_node, inter.state, None
 
     | Update -> // The node is notified of a new node joining
         let node_state = deserialize message
         let updated_leaves = try_add_leaf node node_state.guid node_state.address
         let updated_node = try_add_neighbor updated_leaves node_state.guid node_state.address
         printfn "PASTRY: State after update: %A" updated_node
-        updated_node, state, None
+        updated_node, inter.state, None
 
     | Resource(path, meth) -> // Request for a resource here
         printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
-        let (state', resp, status) = handler path meth send_func state
+        let send_func =
+            match inter.send with
+            | Some(func) -> func
+            | None -> failwith "ASSERTION FAILED: No send func in interface at handle_message"
+        let (state', resp, status) = inter.handle path meth send_func inter.state
         node, state', Some((resp, status))
+
+    | Backup ->
+        failwith "ASSERTION FAILED: handle_message got a backup request"
 
 // Messages
 // Join: join address
 // Routes a message somewhere
 let route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
-        (handler: ResourceRequestFunc<'a>) (send_func: SendFunc<'a>) (state: 'a)
-        : Node * 'a * ((string * int) option) =
+        (inter: PastryInterface<'a>) : Node * 'a * ((string * int) option) =
     printfn "PASTRY: Routing '%A' message towards '%A'" typ key
     let message =
         match typ with // This is actually okay since the nodes contain no strings
@@ -220,11 +230,11 @@ let route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
             if distance leafkey key < distance acc key then leafkey else acc
         let closest = Map.foldBack distance_check node.leaves node.guid
         if closest = node.guid then
-            let (node', state', resp) = handle_message node typ message key handler send_func state
+            let (node', state', resp) = handle_message node typ message key inter
             node', state', resp
         else
             let address = Map.find closest node.leaves
-            node, state, send_message address typ message key
+            node, inter.state, send_message address typ message key
     else
         printfn "PASTRY: Checking routing table..."
         printfn "PASTRY: Actually just using the leaf set ATM..."
@@ -233,15 +243,15 @@ let route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
             if distance leafkey key < distance acc key then leafkey else acc
         let closest = Map.foldBack distance_check node.leaves node.guid
         if closest = node.guid then
-            let (node', state', resp) = handle_message node typ message key handler send_func state
+            let (node', state', resp) = handle_message node typ message key inter
             node', state', resp
         else
             let address = Map.find closest node.leaves
-            node, state, send_message address typ message key
+            node, inter.state, send_message address typ message key
 
 // Attempts to forward a message to a pastry node using the given url parts
 let try_forward_pastry<'a> (node: Node) (cmd_str: string) (dst_str: string)
-        (body: string) (response: HttpListenerResponse) (state: 'a)
+        (body: string) (response: HttpListenerResponse) (inter: PastryInterface<'a>)
         : InterpretResult<'a> =
     match deserialize_guid dst_str with
     | Some(guid) ->
@@ -249,15 +259,15 @@ let try_forward_pastry<'a> (node: Node) (cmd_str: string) (dst_str: string)
         match cmd_str with
         | "join" ->
             reply response "Send attempted!" 200 "Ok"
-            let (node', state', _) = route node Join body guid DUMMY_HANDLER DUMMY_SEND_FUNC state
+            let (node', state', _) = route node Join body guid inter
             Valid(node', state')
         | "update" ->
             reply response "Send attempted!" 200 "Ok"
-            let (node', state', _) = route node Update body guid DUMMY_HANDLER DUMMY_SEND_FUNC state
+            let (node', state', _) = route node Update body guid inter
             Valid(node', state')
         | "joinstate" ->
             reply response "Send attempted!" 200 "Ok"
-            let (node', state', _) = handle_message node JoinState body guid DUMMY_HANDLER DUMMY_SEND_FUNC state
+            let (node', state', _) = handle_message node JoinState body guid inter
             Valid(node', state')
         | _ ->
             let error_message = sprintf "Bad pastry command: '%s'" cmd_str
@@ -267,16 +277,17 @@ let try_forward_pastry<'a> (node: Node) (cmd_str: string) (dst_str: string)
         Invalid(error_message, 404, "Not found")
 
 // Attempts to forward some given url parts
-let try_forward_resource<'a> (node: Node) (split_res_path: string list) (meth: string)
-        (data: string) (response: HttpListenerResponse) (handler: ResourceRequestFunc<'a>)
-        (outer_state: 'a) : InterpretResult<'a> =
+let try_forward_resource<'a> (node: Node) (split_res_path: string list)
+        (meth: string) (data: string) (response: HttpListenerResponse)
+        (inter: PastryInterface<'a>) : InterpretResult<'a> =
     match get_destination split_res_path with
     | Ok(guid) ->
         // Construct the message function used by the repo to route messages out
         let rec send_func (resource_path: string) (meth: string) (data: string) (state: 'a): ResourceResponse<'a> =
             match get_destination (split resource_path '/') with
             | Ok(guid) ->
-                let (node', state', resp_msg) = route node (Resource(resource_path, meth)) data guid handler (send_func) state
+                let (node', state', resp_msg) =
+                    route node (Resource(resource_path, meth)) data guid { inter with send = Some(send_func); }
                 match resp_msg with
                 | Some((resp, status)) ->
                     (state', resp, status)
@@ -287,7 +298,7 @@ let try_forward_resource<'a> (node: Node) (split_res_path: string list) (meth: s
                 (state, resp, status)
 
         let resource_url = String.concat "/" split_res_path
-        let (node', state', resp) = route node (Resource(resource_url, meth)) data guid handler (send_func) outer_state
+        let (node', state', resp) = route node (Resource(resource_url, meth)) data guid { inter with send = Some(send_func); }
         match resp with // If there was some response from the routing just now:
         | Some((message, status)) ->
             reply response message status "Ok"
@@ -297,8 +308,30 @@ let try_forward_resource<'a> (node: Node) (split_res_path: string list) (meth: s
     | Error(msg, status, reason) ->
         Invalid(msg, status, reason)
 
+// Sends a backup state to the nodes that are watching this node
+let send_backup_state (node: Node) (state_msg: string) =
+    let folder k v acc =
+        if k < node.guid && distance k node.guid < distance acc node.guid then
+            k
+        else
+            acc
+    let minleaf = Map.foldBack folder node.leaves node.guid
+    if minleaf = node.guid then // No smaller leaves
+        // Send it to the highest leaf
+        failwith "No smaller leaves: IMPLEMENT PROXIMITY UNDERFLOW"
+    else
+        let address =
+            match Map.tryFind minleaf node.leaves with
+            | Some(addr) -> addr
+            | None -> failwith "Smallest key not found in leaves... WTF!"
+        match send_message address Backup state_msg minleaf with
+        | None ->
+            failwith "No reply for backup: Handle node failure?"
+        | Some(resp, status) ->
+            ()
+
 // Makes the given pastry node start listening...
-let start_listening<'a> (node: Node) (handler_arg: ResourceRequestFunc<'a>) (state_arg: 'a) =
+let start_listening<'a> (node: Node) (inter_arg: PastryInterface<'a>) =
     printfn "Initializing..."
     use listener = new System.Net.HttpListener ()
     let basepath = sprintf "http://%s/" node.address
@@ -306,13 +339,8 @@ let start_listening<'a> (node: Node) (handler_arg: ResourceRequestFunc<'a>) (sta
     listener.Prefixes.Add basepath
     listener.Start ()
 
-    // A function to handle resource requests
-    // context (for replying to this call!), split_path (without /resources), send_func, state -> state
-    //type ResourceRequestFunc<'a> = HttpListenerContext -> string list -> SendFunc -> 'a -> 'a
-
-    let rec listen (node: Node) (handler: ResourceRequestFunc<'a>) (state: 'a) =
-        // Listen for a a message
-
+    // Listen for a a message
+    let rec listen (node: Node) (inter: PastryInterface<'a>) =
         let cxt      = listener.GetContext()
         let request  = cxt.Request
         let response = cxt.Response
@@ -331,14 +359,14 @@ let start_listening<'a> (node: Node) (handler_arg: ResourceRequestFunc<'a>) (sta
         let result =
             match parts with
             | "pastry"::cmd_string::dst_string::[] ->
-                try_forward_pastry node cmd_string dst_string body response state
+                try_forward_pastry node cmd_string dst_string body response inter
 
             | "pastry"::stuff -> // only handles '/pastry'
                 let error_message = sprintf "Unrecognized pastry request url: '%s'" path
                 Invalid(error_message, 404, "Illegal action")
 
             | "resource"::resource_path_parts -> // Someone requests a resource
-                try_forward_resource node resource_path_parts meth body response handler state
+                try_forward_resource node resource_path_parts meth body response inter
 
             | _ ->
                 let error_message = sprintf "Not related to this: %s" path
@@ -347,19 +375,28 @@ let start_listening<'a> (node: Node) (handler_arg: ResourceRequestFunc<'a>) (sta
         // NOTE: Only invalid requests are automatically replied
         match result with
         | Valid(updated_node, updated_state) ->
-            listen updated_node handler updated_state
+
+            // Serialize the updated state
+            let state_msg = inter.serialize updated_state
+            // Send it to the node closest to itself
+            //send_backup_state node state_msg
+
+            listen updated_node { inter with state = updated_state; }
         | Invalid(error_message, status, reason) ->
             error error_message
             reply response error_message status reason
-            listen node handler state
+            listen node inter
 
-    ignore <| listen node handler_arg state_arg// Start listening
+    // Start listening
+    ignore <| listen node inter_arg
 
 // Creates a local node and makes it join the Pastry network
-let start_server<'a> (address: NetworkLocation) (peer: NetworkLocation option) (handler: ResourceRequestFunc<'a>) (state: 'a) =
+let start_server<'a> (address: NetworkLocation) (peer: NetworkLocation option)
+        (handler: ResourceRequestFunc<'a>) (serializer: SerializeFunc<'a>)
+        (state: 'a) =
     let guid = hash address
-    printfn "? Pastry GUID: %020d%020d" guid.a guid.b
-    let node: Node = {
+    printfn "? Pastry GUID: %s" (serialize_guid guid)
+    let node: Node = { // Create a new node
         guid = guid;
         address = address;
         leaves = Map.empty;
@@ -368,12 +405,18 @@ let start_server<'a> (address: NetworkLocation) (peer: NetworkLocation option) (
         neighbors = Map.empty;
         routing_table = [];
     }
+    let inter: PastryInterface<'a> = { // Create the inter parts
+        send = None;
+        handle = handler;
+        serialize = serializer;
+        state = state;
+    }
     match peer with
     | None ->
-        start_listening<'a> node handler state
+        start_listening<'a> node inter
     | Some(peer) ->
         match send_message peer Join address guid with
         | None ->
             error <| sprintf "Could not establish a connection with peer at '%s'" peer
         | Some(_) ->
-            start_listening<'a> node handler state
+            start_listening<'a> node inter

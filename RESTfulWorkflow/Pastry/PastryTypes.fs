@@ -4,10 +4,7 @@ open System
 open System.Net
 
 // =================== TYPE DEFINITIONS ======================
-type U128 = {
-    a: uint64; // First part of the 128 bits
-    b: uint64; // Second part of the 128 bits
-}
+type U128 = bigint
 type NetworkLocation = string // an url... Maybe something better later
 type GUID = U128 // u128... Maybe something better later
 type Address = NetworkLocation
@@ -21,7 +18,8 @@ type MessageType =
 | JoinState // The state data for a new node
 // Request a resource somewhere to be routed back using the context
 | Resource of string * string
-    // Add more persistency commands here
+// Add more persistency commands here
+| Backup    // This is the backup state of a watched node
 
 // The state record of a Pastry node
 type Node = {
@@ -29,8 +27,8 @@ type Node = {
     address: NetworkLocation;
     neighbors: Map<GUID, Address>;  // Physical location proximity (IP address)
     leaves: Map<GUID, Address>;     // GUID-numerically closest nodes
-    minleaf: U128;
-    maxleaf: U128;
+    minleaf: GUID;
+    maxleaf: GUID;
     routing_table: Map<GUID, Address> list;
 }
 

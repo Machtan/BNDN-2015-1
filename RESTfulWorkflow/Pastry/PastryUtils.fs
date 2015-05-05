@@ -4,6 +4,7 @@ open System
 open System.Security.Cryptography
 open System.IO
 open System.Net
+open System.Numerics
 open Newtonsoft.Json
 
 open PastryTypes
@@ -17,27 +18,21 @@ let split (str: string) (c: char) =
     List.ofArray (str.Split([|c|]))
 
 // Calculates the absolute distance between two GUIDs
-let distance (one: GUID) (two: GUID) : U128 =
-    // Unsigned shenanigans
-    let a = if one.a > two.a then one.a - two.a else two.a - one.a
-    let b = if one.b > two.b then one.b - two.b else two.b - one.b
-    {a = a; b = b}
+let distance (one: GUID) (two: GUID) : GUID =
+    abs (two - one)
 
 // Converts a GUID to a string
 let serialize_guid (guid: GUID) : string =
-    sprintf "%020d%020d" guid.a guid.b
+    let serialized = string guid
+    (String.replicate (40 - String.length serialized) "0") + serialized
 
-// Attempts to convert the given string to a GUID
+// Attempts to convert the given string to a GUIDi/
 let deserialize_guid (str: string) : GUID option =
     if not (str.Length = 40) then
         None
     else
-        let a = str.[..19]
-        let b = str.[20..]
         try
-            let ua = System.Convert.ToUInt64(a)
-            let ub = System.Convert.ToUInt64(b)
-            Some({a = ua; b = ub}) //
+            Some(BigInteger.Parse(str)) //
         with
             | ex -> None
 
@@ -92,7 +87,7 @@ let deserialize (json: string) : Node =
 
 // Convert a byte array to an u64. Please don't use an array that is more than
 // 8 bytes long... (tip: You get undefined behavior)
-let to_u64 (byte_arr: byte[]) = // It's this or mapi + foldback ...
+let to_u64 (byte_arr: byte[]) : uint64 = // It's this or mapi + foldback ...
     let rec inner arr pos acc =
         match arr with
         | [] -> acc
@@ -104,27 +99,24 @@ let to_u64 (byte_arr: byte[]) = // It's this or mapi + foldback ...
 // Get a list of the digits of a GUID as u64s
 // NOTE: (could be u16 with the default value of 'b' (DIGIT_POWER))
 let get_digits (guid: GUID) : uint64 list =
-    let get_bytes (x: uint64): byte[] =
+    let get_bytes (guid: GUID) : byte list =
         let barr =
             if BitConverter.IsLittleEndian then
-                Array.rev (BitConverter.GetBytes(x))
+                Array.rev (guid.ToByteArray())
             else
-                BitConverter.GetBytes(x)
+                guid.ToByteArray()
         let len = Array.length barr
-        if len < 8 then // Pad with zeroes if needed
-            Array.append (Array.zeroCreate (8-len)) barr
+        if len < 16 then // Pad with zeroes if needed
+            List.ofArray <| Array.append (Array.zeroCreate (16-len)) barr
         else
-            barr
-
-    let a_bytes = get_bytes guid.a
-    let b_bytes = get_bytes guid.b
+            List.ofArray barr
 
     let rec map_bytes acc = function
     | [] -> acc
     | byte1::byte2::tail -> map_bytes ((to_u64 [|byte1;byte2|])::acc) tail
     | _ -> failwith "This shouldn't happen!"
 
-    List.rev (map_bytes [] (List.ofArray (Array.append a_bytes b_bytes)))
+    List.rev (map_bytes [] <| get_bytes guid)
 
 // Gets the length of the shared digits between two GUIDs
 let shared_prefix_length (a: GUID) (b: GUID) =
@@ -141,13 +133,13 @@ let shared_prefix_length (a: GUID) (b: GUID) =
 
 // Converts an IP-address (or any other string) to an u128 (sorta)
 // NOTE: I'm not sure whether this is endian-safe
-let hash (ip_address: NetworkLocation): U128 =
+let hash (ip_address: NetworkLocation): GUID =
     let content: byte[] = System.Text.Encoding.ASCII.GetBytes(ip_address)
     let bytes: byte[] = (content |> HashAlgorithm.Create("SHA1").ComputeHash).[..15] // 16 first bytes
     let a = to_u64 bytes.[..7]
     let b = to_u64 bytes.[8..15]
     //printfn "Hash : a / b : %d / %d" a b
-    {a = a; b = b}
+    (bigint a) * (bigint UInt64.MaxValue) + (bigint b)
 
 // Adapted from https://stackoverflow.com/questions/1069103/how-to-get-my-own-ip-address-in-c
 let get_public_ip () =
