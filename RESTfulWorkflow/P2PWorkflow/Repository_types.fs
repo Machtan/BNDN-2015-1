@@ -69,3 +69,21 @@ type ResultEvent =
     | MissingRelation
     | Error of string
     | LockConflict
+
+///-----Midlertidig---- 
+// Updated state, response, status code
+type ResourceResponse<'a> = 'a * string * int
+
+// A function for the resource request func to send requests through
+// partial_resource_url, method, data, state -> response
+type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
+
+type Result =
+    | Ok of Repository
+    | Unauthorized
+    | NotExecutable
+    | MissingRelation
+    | MissingEvent
+    | MissingWorkflow
+    | LockConflict
+    | Error of string
