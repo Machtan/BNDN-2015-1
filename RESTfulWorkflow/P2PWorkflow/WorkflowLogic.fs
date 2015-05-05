@@ -6,6 +6,7 @@ open Repository_types
 
 /// Creates and returns a new workflow from a name
 let create_workflow (workflow : WorkflowName) : ResultWorkflow =
+    failwith "Not implemented yed."
     ResultWorkflow.Ok(workflow,[])
 
 //Read
@@ -16,7 +17,7 @@ let find_executable_with_roles (workflow : Workflow) (roles : Roles) : Executabl
 //    let rec findEvents
 //        match eventList with
 //        | [] -> []
-    
+
 //recursive find the events and :: them together and return them?
     failwith "Not implemented yed."
 
@@ -24,6 +25,7 @@ let find_executable_with_roles (workflow : Workflow) (roles : Roles) : Executabl
 
 /// Adds a given event to a given Workflow and returns the result
 let add_event (workflow : Workflow) (event : EventName) : ResultWorkflow =
+    failwith "Not implemented yed."
     let wfName, eventNameList = workflow
     ResultWorkflow.Ok(wfName, event::eventNameList)
 
@@ -32,23 +34,28 @@ let add_event (workflow : Workflow) (event : EventName) : ResultWorkflow =
 /// Removes given event form given workflow and returns the result
 let remove_event (workflow : Workflow) (event : EventName) : ResultWorkflow =
     let wfName, eventNameList = workflow
-    let rec remove_first event eventNameList =
-      match eventNameList with
-       | h::eventNameList when event = h-> eventNameList
-       | h::eventNameList -> h::remove_first event eventNameList
-       | _ -> []
-    ResultWorkflow.Ok(wfName, (remove_first event eventNameList))
+    let rec remove_first eventNameList event =
+        match eventNameList with
+        |h::eventNameList when h = event -> eventNameList
+        |h::eventNameList -> h::(remove_first eventNameList event)
+        | _ -> []
+    ResultWorkflow.Ok(wfName, (remove_first eventNameList event))
 
-    
 /// Deletes given workflow and returns it if its susesful
 let delete_workflow (workflow : Workflow) : ResultWorkflow =
     let wfName, eventNameList = workflow
-    let rec deleteEvents eventNameList =
+    let rec deleteEvents eventNameList=
         match eventNameList with
-        | h::eventNameList -> deleteEvents(remove_event(h))
+        | h::eventNameList ->
+            match remove_event workflow h with 
+            |ResultWorkflow.Ok(x) -> 
+                let wfN, eventNList = x
+                deleteEvents eventNList
+            | _ -> []
         | _ -> []
-    let deleteWfName wfName = ""
-    ResultWorkflow.Ok((deleteWfName wfName), (deleteEvents eventNameList))
+    //call method to remove workflow fom repository?
+    ResultWorkflow.Ok("", [])
 
-//make a copy of the workflow. Might not be necessary.
-//go recursive though all the events in the workflow calling remove_event, afterwards return the workflow.
+
+
+
