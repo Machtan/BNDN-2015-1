@@ -83,5 +83,7 @@ type Result =
     | Unauthorized
     | NotExecutable
     | MissingRelation
+    | MissingEvent
+    | MissingWorkflow
     | LockConflict
     | Error of string
