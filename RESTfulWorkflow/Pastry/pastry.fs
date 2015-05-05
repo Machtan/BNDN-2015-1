@@ -93,21 +93,34 @@ let try_add_neighbor (node: Node) (guid: GUID) (address: NetworkLocation) : Node
 
 // Tries to add the given guid/address pair to the node as a leaf
 let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
-    if node.leaves.Count < MAX_LEAVES then // Room for more
-        let minleaf = if guid < node.minleaf then guid else node.minleaf
-        let maxleaf = if guid > node.maxleaf then guid else node.maxleaf
-        let leaves = Map.add guid address node.leaves
-        { node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
+    // Check whether there is an empty spot in the leaf set for this leaf
+    if (valid_min_leaf node guid) && (min_leaf_count node) < (MAX_LEAVES / 2) then
+        failwith "Not Implemented"
+    else if (valid_max_leaf node guid) && (max_leaf_count node) < (MAX_LEAVES / 2) then
+        failwith "Not Implemented"
+        //let minleaf = if guid < node.minleaf then guid else node.minleaf
+        //let maxleaf = if guid > node.maxleaf then guid else node.maxleaf
+        //let leaves = Map.add guid address node.leaves
+        //{ node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
     else
-        if guid > node.minleaf && guid < node.maxleaf then // Within replacement range
-            if guid >= node.guid then
-                let leaves = Map.add guid address (Map.remove node.maxleaf node.leaves)
-                let maxleaf = Map.foldBack (fun k _ acc -> if k > acc then k else acc) leaves guid
-                { node with leaves = leaves; maxleaf = maxleaf; }
-            else
-                let leaves = Map.add guid address (Map.remove node.minleaf node.leaves)
-                let minleaf = Map.foldBack (fun k _ acc -> if k < acc then k else acc) leaves guid
-                { node with leaves = leaves; minleaf = minleaf; }
+        if (valid_max_leaf node guid) && (not (guid = node.maxleaf)) then
+            let leaves = Map.add guid address (Map.remove node.maxleaf node.leaves)
+            let folder k _ acc =
+                if valid_max_leaf node k then
+                    if distance k node.guid > distance acc node.guid then k
+                    else acc
+                else acc
+            let maxleaf = Map.foldBack folder leaves guid
+            { node with leaves = leaves; maxleaf = maxleaf; }
+        else if (valid_min_leaf node guid) && (not (guid = node.minleaf)) then
+            let leaves = Map.add guid address (Map.remove node.minleaf node.leaves)
+            let folder k _ acc =
+                if valid_min_leaf node k then
+                    if distance k node.guid > distance acc node.guid then k
+                    else acc
+                else acc
+            let minleaf = Map.foldBack folder leaves guid
+            { node with leaves = leaves; minleaf = minleaf; }
         else
             node
 
@@ -223,8 +236,9 @@ let route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
             sprintf "%s%s%s" msg SEPARATOR (serialize node)
         | _ -> msg
 
+    let valid_leaf = (valid_min_leaf node key) || (valid_max_leaf node key)
     // Within leaf set
-    if (node.minleaf <= key && key <= node.maxleaf) || Map.isEmpty node.leaves then
+    if valid_leaf || Map.isEmpty node.leaves || (key = node.guid) then
         printfn "PASTRY: Found target within leaf set!"
         let distance_check = fun leafkey _ acc ->
             if distance leafkey key < distance acc key then leafkey else acc

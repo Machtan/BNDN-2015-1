@@ -17,6 +17,35 @@ let error str =
 let split (str: string) (c: char) =
     List.ofArray (str.Split([|c|]))
 
+// Checks whether the given GUID is within the valid min leaf range
+let valid_min_leaf (node: Node) (check: GUID) =
+    if node.minleaf > node.guid then
+        check >= node.minleaf || check < node.guid
+    else
+        check >= node.minleaf && check < node.guid
+
+// Counts the number of smaller leaves in a node
+let min_leaf_count (node: Node) =
+    let folder k _ acc =
+        if valid_min_leaf node k then acc + 1
+        else acc
+    Map.foldBack folder node.leaves 0
+
+// Checks whether the given GUID is within the valid max leaf range
+let valid_max_leaf (node: Node) (check: GUID) =
+    if node.maxleaf < node.guid then
+        check <= node.maxleaf || check > node.guid
+    else
+        check <= node.maxleaf && check > node.guid
+
+
+// Counts the number of larger leaves in a node
+let max_leaf_count (node: Node) =
+    let folder k _ acc =
+        if valid_max_leaf node k then acc + 1
+        else acc
+    Map.foldBack folder node.leaves 0
+
 // Calculates the absolute distance between two GUIDs
 let distance (one: GUID) (two: GUID) : GUID =
     abs (two - one)
