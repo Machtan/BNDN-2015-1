@@ -94,14 +94,20 @@ let try_add_neighbor (node: Node) (guid: GUID) (address: NetworkLocation) : Node
 // Tries to add the given guid/address pair to the node as a leaf
 let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
     // Check whether there is an empty spot in the leaf set for this leaf
-    if (valid_min_leaf node guid) && (min_leaf_count node) < (MAX_LEAVES / 2) then
-        failwith "Not Implemented"
-    else if (valid_max_leaf node guid) && (max_leaf_count node) < (MAX_LEAVES / 2) then
-        failwith "Not Implemented"
-        //let minleaf = if guid < node.minleaf then guid else node.minleaf
-        //let maxleaf = if guid > node.maxleaf then guid else node.maxleaf
-        //let leaves = Map.add guid address node.leaves
-        //{ node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
+    if node.leaves.Count < MAX_LEAVES then // Room for more
+        let leaves = Map.add guid address node.leaves
+        // Find the index of the sorted list of keys that is bigger than the
+        // node's guid
+        let sorted_leaves = Map.toList leaves |> List.map (fun (k,_) -> k) |> List.sort
+        let folder k acc =
+            if k < node.guid then acc + 1
+            else acc
+        let bigger_index = List.foldBack folder sorted_leaves 0
+        let min_leaf_index = (bigger_index + (node.leaves.Count / 2)) % node.leaves.Count
+        let max_leaf_index = min_leaf_index - 1
+        let minleaf = List.nth sorted_leaves min_leaf_index
+        let maxleaf = List.nth sorted_leaves max_leaf_index
+        { node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
     else
         if (valid_max_leaf node guid) && (not (guid = node.maxleaf)) then
             let leaves = Map.add guid address (Map.remove node.maxleaf node.leaves)
