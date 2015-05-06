@@ -15,7 +15,7 @@ type EventState = {
 }
 
 
-type User = UserName*(WorkflowName*Roles list)  // The name of a user + witch roles he have it witch workflow
+type User = UserName*((WorkflowName*Roles) list)  // The name of a user + witch roles he have it witch workflow
 type EventName = WorkflowName*string      // WorkflowName*EventName
 type Workflow = WorkflowName*(EventName list)  // The name of a workflow and the events it contain
 
@@ -49,10 +49,10 @@ type Repository = {
 
 // posible results when working with users
 type ResultUser =
-    | Ok of User
+    | Ok of Repository
     | Unauthorized
     | NotExecutable
-    | MissingEvent of string
+    | MissingUser
 
 // posible results when working with workflows
 type ResultWorkflow =

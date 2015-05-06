@@ -52,7 +52,6 @@
     <Compile Include="EventLogic.fs" />
     <Compile Include="WorkflowLogic.fsi" />
     <Compile Include="UserLogic.fsi" />
-    <Compile Include="UserLogic.fs" />
     <Compile Include="Send.fsi" />
     <Compile Include="Send.fs" />
     <None Include="App.config" />
@@ -61,6 +60,7 @@
     <Compile Include="Program.fs" />
     <Compile Include="PastryTypes.fs" />
     <Compile Include="WorkflowLogic.fs" />
+    <Compile Include="UserLogic.fs" />
     <Compile Include="pastry.fs" />
     <Compile Include="RestAPI.fs" />
   </ItemGroup>

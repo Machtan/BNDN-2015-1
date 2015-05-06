@@ -22,4 +22,4 @@ val add_user_roles:             UserName -> WorkflowName -> Roles -> Repository 
 /// Deletes given user and returns it if its susesful
 val delete_user:                UserName -> Repository -> ResultUser
 /// Removes given workflow roles form given user and returns the result
-val remove_user_roles:          UserName -> Workflow -> Roles -> Repository -> ResultUser
+val remove_user_roles:          UserName -> WorkflowName -> Roles -> Repository -> ResultUser
