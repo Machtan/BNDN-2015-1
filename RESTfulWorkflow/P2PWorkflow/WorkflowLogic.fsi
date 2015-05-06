@@ -10,7 +10,9 @@ val create_workflow:            WorkflowName -> Repository -> Result
 //Read
 
 /// Metodes used when finding all executabel event for a user
-val find_executable_with_roles: WorkflowName -> Roles -> SendFunc<'a> -> Repository -> ExecutableInWorkflow
+//val find_executable_with_roles: WorkflowName -> Roles -> SendFunc<Repository> -> Repository -> ExecutableInWorkflow
+/// Check if given workflow exsist
+val check_workflow:             WorkflowName -> Repository -> bool
 
 //Update
 
@@ -20,7 +22,7 @@ val add_event:                  WorkflowName -> EventName -> Repository -> Resul
 //Delete
 
 /// Deletes given workflow and returns it if its susesful
-val delete_workflow:            WorkflowName -> SendFunc<'a> -> Repository -> Result
+val delete_workflow:            WorkflowName -> SendFunc<Repository> -> Repository -> Result
 /// Removes given event form given workflow and returns the result
-val remove_event:               WorkflowName -> EventName -> SendFunc<'a> -> Repository -> Result
+val remove_event:               WorkflowName -> EventName -> SendFunc<Repository> -> Repository -> Result
 

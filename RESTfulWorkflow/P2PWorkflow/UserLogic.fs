@@ -27,6 +27,25 @@ let create_user (user : UserName)  (repository : Repository) : ResultUser =
 //Read
 
 /// Metodes used when finding all executabel event for a user 
+let get_user_roles (username : UserName)  (workflow : WorkflowName) (repository : Repository) : Roles list =
+//        let user = getUser username repository
+//        match (user) with
+//        | Some(u) -> 
+//            let (uuserName,uWfRolesList) = u 
+//            let rec UpdateUserRoles ls =
+//                match (ls) with
+//                | (wf,rl)::ls ->  
+//                    match (wf) with
+//                    | wf when wf = workflow ->   
+//                            (wf, Set.union rl roles) :: UpdateUserRoles ls                           
+//                    | _ -> (wf,rl) :: UpdateUserRoles ls
+//                | [] -> []
+//
+//            ResultUser.Ok({repository with users = Map.add username (username, UpdateUserRoles uWfRolesList) repository.users})
+//        | None -> Map.empty
+    failwith "Not Implemented"
+
+/// Metodes used when finding all executabel event for a user 
 let find_executable_events (username : UserName) (repository : Repository) : Executable =
 //        let user = getUser username repository
 //        match (user) with
@@ -44,7 +63,6 @@ let find_executable_events (username : UserName) (repository : Repository) : Exe
 //            ResultUser.Ok({repository with users = Map.add username (username, UpdateUserRoles uWfRolesList) repository.users})
 //        | None -> Map.empty
     failwith "Not Implemented"
-        
 
 //Update
 
