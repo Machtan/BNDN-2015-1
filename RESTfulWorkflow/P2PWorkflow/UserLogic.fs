@@ -1,6 +1,7 @@
 ﻿module UserLogic
 
 open Repository_types
+open EventLogic
 
 type UpdateMapResult =
 | MapOk of Map<string, User>
@@ -27,42 +28,40 @@ let create_user (user : UserName)  (repository : Repository) : ResultUser =
 //Read
 
 /// Metodes used when finding all executabel event for a user 
-let get_user_roles (username : UserName)  (workflow : WorkflowName) (repository : Repository) : Roles list =
-//        let user = getUser username repository
-//        match (user) with
-//        | Some(u) -> 
-//            let (uuserName,uWfRolesList) = u 
-//            let rec UpdateUserRoles ls =
-//                match (ls) with
-//                | (wf,rl)::ls ->  
-//                    match (wf) with
-//                    | wf when wf = workflow ->   
-//                            (wf, Set.union rl roles) :: UpdateUserRoles ls                           
-//                    | _ -> (wf,rl) :: UpdateUserRoles ls
-//                | [] -> []
-//
-//            ResultUser.Ok({repository with users = Map.add username (username, UpdateUserRoles uWfRolesList) repository.users})
-//        | None -> Map.empty
-    failwith "Not Implemented"
+let get_user_roles (username : UserName)  (workflow : WorkflowName) (repository : Repository) : Roles =
+        let user = getUser username repository
+
+        match (user) with
+        | Some(u) -> 
+            let (uuserName,uWfRolesList) = u 
+            let rec GetRolesList (ls : (WorkflowName * Roles) list) =
+                match (ls) with
+                | (wf,rl)::ls' -> Set.union rl (GetRolesList ls')
+                | [] -> Set.empty
+            GetRolesList uWfRolesList
+        | None -> Set.empty
 
 /// Metodes used when finding all executabel event for a user 
 let find_executable_events (username : UserName) (repository : Repository) : Executable =
-//        let user = getUser username repository
-//        match (user) with
-//        | Some(u) -> 
-//            let (uuserName,uWfRolesList) = u 
-//            let rec UpdateUserRoles ls =
-//                match (ls) with
-//                | (wf,rl)::ls ->  
-//                    match (wf) with
-//                    | wf when wf = workflow ->   
-//                            (wf, Set.union rl roles) :: UpdateUserRoles ls                           
-//                    | _ -> (wf,rl) :: UpdateUserRoles ls
-//                | [] -> []
-//
-//            ResultUser.Ok({repository with users = Map.add username (username, UpdateUserRoles uWfRolesList) repository.users})
-//        | None -> Map.empty
-    failwith "Not Implemented"
+        let user = getUser username repository
+
+        match (user) with
+        | Some(u) -> 
+            let (uuserName,uWfRolesList) = u 
+            let rec GetUserEvents ls =
+                match (ls) with
+                | (wf,rl)::ls ->  
+                        let eventNames = match (Map.tryFind wf repository.workflows) with
+                            | Some(t) -> t
+                            | None -> failwith "Repository is corrupted" 
+                        let executableEvents = List.filter (fun el -> check_if_executeble (wf,el) repository) eventNames
+                        let rec getEventStatesList ls  = match (ls) with
+                            | eventname::lsRest -> (eventname,get_event_state (wf,eventname) repository) :: getEventStatesList lsRest
+                            | [] -> []
+                        (wf, getEventStatesList executableEvents) :: GetUserEvents ls
+                | [] -> []
+            Map.ofList([for (s,ls) in GetUserEvents uWfRolesList do yield (s,ls)])
+        | None -> Map.empty 
 
 //Update
 

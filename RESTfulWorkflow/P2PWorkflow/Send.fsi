@@ -7,9 +7,9 @@ type Message =
 | GetIfCondition            of EventName
 | Lock                      of EventName
 | Unlock                    of EventName
-| SetExcluded               of EventName * bool                // The target event becomes excluded
 | SetIncluded               of EventName * bool               // The target event becomes included
 | SetPending                of EventName * bool                // The target event becomes pending
+| GetUserRoles              of UserName
 
 /// Sends given message with the use of pastery.fs
 val send: Message -> SendFunc<Repository> -> Repository -> ResourceResponse<Repository>
