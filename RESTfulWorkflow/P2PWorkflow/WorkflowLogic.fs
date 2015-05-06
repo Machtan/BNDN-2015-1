@@ -20,7 +20,9 @@ let create_workflow (wfName : WorkflowName) (repos : Repository) : Result =
 
 //Read
 let check_workflow (wfName : WorkflowName) (repos : Repository) : bool =
-    failwith "Not implemented yed."
+        match repos.workflows.TryFind(wfName) with
+        | Some(v) -> true
+        | None -> false
 
 /// Metodes used when finding all executabel event for a user
 let find_executable_with_roles (workflow : Workflow) (roles : Roles) (magic : SendFunc<'a>) (repos : Repository) : ExecutableInWorkflow =
@@ -47,7 +49,7 @@ let add_event (wfName : WorkflowName) (event : EventName) (repos : Repository) :
 //Delete
 
 /// Removes given event form given workflow and returns the result
-let remove_event (wfName : WorkflowName) (event : EventName) (magic : SendFunc<'a>) (repos : Repository) : Result =
+let remove_event (wfName : WorkflowName) (event : EventName) (magic : SendFunc<Repository>) (repos : Repository) : Result =
     let workflowName, event = event
     let events = 
         match repos.workflows.TryFind(wfName) with
@@ -61,20 +63,17 @@ let remove_event (wfName : WorkflowName) (event : EventName) (magic : SendFunc<'
     Result.Ok({repos with workflows = Map.add wfName (remove_first events event) repos.workflows})
 
 /// Deletes given workflow and returns it if its susesful
-let delete_workflow (wfName : WorkflowName) (magic : SendFunc<'a>) (repos : Repository) : Result =
+let delete_workflow (wfName : WorkflowName) (magic : SendFunc<Repository>) (repos : Repository) : Result =
     let events = 
         match repos.workflows.TryFind(wfName) with
         | Some(v) -> v
         | None -> failwith "Workflow Does not exist" 
-    let (makeEventnames : EventName list) =
-        events |> List.map (fun (event) -> (wfName, event))
-    let rec deleteEvents eventNameList=
-        match eventNameList with
-        | h::eventNameList ->
+    let rec deleteEvents events=
+        match events with
+        | h::events ->
             match remove_event wfName h magic repos with  
             |Result.Ok(x) -> 
-                let wfN, eventNList = x
-                deleteEvents eventNList
+                deleteEvents events
             | _ -> []
         | _ -> []
     //call method to remove workflow fom repository?
