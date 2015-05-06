@@ -14,7 +14,9 @@ let main args =
         // url, method, send_func, state -> state, response
         // Yay!
         let dummy_handler path meth send_func (state: 'a) : ResourceResponse<'a> =
+            printfn "%s" <| String.replicate 50 "="
             printfn "REPOSITORY: Dummy handler is handling '%s' '%s'" meth path
+            printfn "%s" <| String.replicate 50 "="
             state, "Hello World", 200
 
         // So serious
