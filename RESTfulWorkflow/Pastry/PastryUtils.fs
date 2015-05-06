@@ -84,6 +84,7 @@ let serialize (node: Node) : string =
             minleaf = minleaf;
             maxleaf = maxleaf;
             routing_table = routing_table;
+            backup = node.backup;
         }
     JsonConvert.SerializeObject new_node
 
@@ -111,6 +112,7 @@ let deserialize (json: string) : Node =
             minleaf = minleaf;
             maxleaf = maxleaf;
             routing_table = routing_table;
+            backup = node.backup;
         }
     new_node
 

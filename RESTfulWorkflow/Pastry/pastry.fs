@@ -104,7 +104,9 @@ let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
             else acc
         let bigger_index = List.foldBack folder sorted_leaves 0
         let min_leaf_index = (bigger_index + (leaves.Count / 2)) % leaves.Count
-        let max_leaf_index = min_leaf_index - 1
+        let max_leaf_index =
+            if min_leaf_index = 0 then leaves.Count - 1
+            else min_leaf_index - 1
         let minleaf = List.nth sorted_leaves min_leaf_index
         let maxleaf = List.nth sorted_leaves max_leaf_index
         { node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
@@ -223,7 +225,8 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
         node, state', Some((resp, status))
 
     | Backup ->
-        failwith "ASSERTION FAILED: handle_message got a backup request"
+        printfn "PASTRY: Backup received!"
+        { node with backup = message; }, inter.state, Some(("Done!", 200))
 
 // Messages
 // Join: join address
@@ -278,16 +281,20 @@ let try_forward_pastry<'a> (node: Node) (cmd_str: string) (dst_str: string)
         printfn "%A" route
         match cmd_str with
         | "join" ->
-            reply response "Send attempted!" 200 "Ok"
+            reply response "Forward attempted!" 200 "Ok"
             let (node', state', _) = route node Join body guid inter
             Valid(node', state')
         | "update" ->
-            reply response "Send attempted!" 200 "Ok"
+            reply response "Forward attempted!" 200 "Ok"
             let (node', state', _) = route node Update body guid inter
             Valid(node', state')
         | "joinstate" ->
-            reply response "Send attempted!" 200 "Ok"
+            reply response "Forward attempted!" 200 "Ok"
             let (node', state', _) = handle_message node JoinState body guid inter
+            Valid(node', state')
+        | "backup" ->
+            reply response "Forward attempted!" 200 "Ok"
+            let (node', state', _) = handle_message node Backup body guid inter
             Valid(node', state')
         | _ ->
             let error_message = sprintf "Bad pastry command: '%s'" cmd_str
@@ -312,7 +319,7 @@ let try_forward_resource<'a> (node: Node) (split_res_path: string list)
                 | Some((resp, status)) ->
                     (state', resp, status)
                 | None ->
-                    failwith "ASSERT FAILED: The resource request did not return a string"
+                    failwith "ASSERTION FAILED: The resource request did not return a string"
             | Error(resp, status, reason) ->
                 error <| sprintf "Could not send '%s' message from repo to '%s'" meth resource_path
                 (state, resp, status)
@@ -338,15 +345,17 @@ let send_backup_state (node: Node) (state_msg: string) =
     let minleaf = Map.foldBack folder node.leaves node.guid
     if minleaf = node.guid then // No smaller leaves
         // Send it to the highest leaf
-        failwith "No smaller leaves: IMPLEMENT PROXIMITY UNDERFLOW"
+        printfn "PASTRY: No other leaves, backup delayed..."
     else
         let address =
             match Map.tryFind minleaf node.leaves with
-            | Some(addr) -> addr
-            | None -> failwith "Smallest key not found in leaves... WTF!"
+            | Some(addr) ->
+                addr
+            | None ->
+                failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
         match send_message address Backup state_msg minleaf with
         | None ->
-            failwith "No reply for backup: Handle node failure?"
+            printfn "PASTRY: No reply for backup: Handle node failure?"
         | Some(resp, status) ->
             ()
 
@@ -424,6 +433,7 @@ let start_server_fixed_guid<'a> (address: NetworkLocation) (peer: NetworkLocatio
         maxleaf = guid;
         neighbors = Map.empty;
         routing_table = [];
+        backup = "";
     }
     let inter: PastryInterface<'a> = { // Create the inter parts
         send = None;

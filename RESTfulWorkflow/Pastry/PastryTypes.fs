@@ -30,6 +30,7 @@ type Node = {
     minleaf: GUID;
     maxleaf: GUID;
     routing_table: Map<GUID, Address> list;
+    backup: string; // A serialized backup of its closest larger leaf
 }
 
 // Something to make the JSON serialization work
@@ -41,6 +42,7 @@ type SerializableNode = {
     maxleaf: string;
     neighbors: Map<string, Address>;
     leaves: Map<string, Address>;
+    backup: string;
 }
 
 // A result type to simplify the interpretation a little
