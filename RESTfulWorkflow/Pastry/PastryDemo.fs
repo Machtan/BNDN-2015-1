@@ -6,7 +6,7 @@ open Newtonsoft.Json
 let main args =
     printfn "Danish Pastry!"
     match args with
-    | [|addr; port; peer|] ->
+    | [|addr; port; peer; guid|] ->
         let address = sprintf "%s:%s" (if addr = "" then "localhost" else addr) port
         printfn "? Joining pastry network at '%s'..." address
         let known_peer = if peer = "" then None else Some(peer)
@@ -21,9 +21,14 @@ let main args =
         let dummy_serializer (state: 'a) : string =
             JsonConvert.SerializeObject state
 
-        let node = start_server address known_peer dummy_handler dummy_serializer 0
+        let pad_guid_with_zeroes (guid_str: string) =
+            (String.replicate (40 - String.length guid_str) "0") + guid_str
+
+        let guid_str = pad_guid_with_zeroes guid
+
+        let node = test_server address known_peer dummy_handler dummy_serializer guid_str 0
         ()
         // Start listening...
     | _ ->
-        printfn "Usage: Pastry.exe <address> <port> <peer_address_with_port>"
+        printfn "Usage: Pastry.exe <address> <port> <peer_address_with_port> <GUID>"
     0

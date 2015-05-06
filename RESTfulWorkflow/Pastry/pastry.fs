@@ -103,7 +103,7 @@ let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
             if k < node.guid then acc + 1
             else acc
         let bigger_index = List.foldBack folder sorted_leaves 0
-        let min_leaf_index = (bigger_index + (node.leaves.Count / 2)) % node.leaves.Count
+        let min_leaf_index = (bigger_index + (leaves.Count / 2)) % leaves.Count
         let max_leaf_index = min_leaf_index - 1
         let minleaf = List.nth sorted_leaves min_leaf_index
         let maxleaf = List.nth sorted_leaves max_leaf_index
@@ -410,11 +410,11 @@ let start_listening<'a> (node: Node) (inter_arg: PastryInterface<'a>) =
     // Start listening
     ignore <| listen node inter_arg
 
-// Creates a local node and makes it join the Pastry network
-let start_server<'a> (address: NetworkLocation) (peer: NetworkLocation option)
+
+// "Actually" starts the server. Used by the interface functions
+let start_server_fixed_guid<'a> (address: NetworkLocation) (peer: NetworkLocation option)
         (handler: ResourceRequestFunc<'a>) (serializer: SerializeFunc<'a>)
-        (state: 'a) =
-    let guid = hash address
+        (guid: GUID) (state: 'a) =
     printfn "? Pastry GUID: %s" (serialize_guid guid)
     let node: Node = { // Create a new node
         guid = guid;
@@ -440,3 +440,21 @@ let start_server<'a> (address: NetworkLocation) (peer: NetworkLocation option)
             error <| sprintf "Could not establish a connection with peer at '%s'" peer
         | Some(_) ->
             start_listening<'a> node inter
+
+// Starts a server with a fixed guid in string from
+let test_server<'a> (address: NetworkLocation) (peer: NetworkLocation option)
+        (handler: ResourceRequestFunc<'a>) (serializer: SerializeFunc<'a>)
+        (guid_str: string) (state: 'a) =
+    let guid =
+        match deserialize_guid guid_str with
+        | Some(id) -> id
+        | None -> failwith "Invalid GUID given!"
+    start_server_fixed_guid address peer handler serializer guid state
+
+// Creates a local node and makes it join the Pastry network
+let start_server<'a> (address: NetworkLocation) (peer: NetworkLocation option)
+        (handler: ResourceRequestFunc<'a>) (serializer: SerializeFunc<'a>)
+        (state: 'a) =
+    let guid = hash address
+    start_server_fixed_guid address peer handler serializer guid state
+
