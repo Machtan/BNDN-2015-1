@@ -1,6 +1,7 @@
 ﻿module EventLogic
 
 open Repository_types
+open Send
 
 type UpdateMapResult =
 | MapOk of Map<string, bool*Event>
@@ -72,16 +73,46 @@ let check_roles (eventName : EventName) (roles : Roles) (repository : Repository
     else true
 
 /// Checks if given event is executeble
-let check_if_executeble (eventName : EventName) (repository : Repository) : bool =
-    failwith "Not implemented yet"
+let check_if_executeble (eventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : bool =
+    let event = get_event eventName repository
+
+    let onlyConditions x =
+        let typ, _ = x
+        typ = Condition
+        
+    let checkConditions x =
+        let typ, fromEventName = x
+        let fromWorkflow, fromName = fromEventName
+        check_if_positive_bool (send (GetIfCondition(eventName)) sendFunc repository)
+
+    if event.included = true
+    then
+        let fromRelations = Set.filter onlyConditions event.fromRelations
+        Set.forall checkConditions fromRelations
+    else false
+
 
 /// Checks if given event is luck'et
 let check_if_lucked (eventName : EventName) (repository : Repository) : bool =
-    failwith "Not implemented yet"
+    let workflow, name = eventName
+    match Map.tryFind workflow repository.events with
+    | Some(innerMap)   ->
+        match Map.tryFind name innerMap with
+            | Some(lockEvent)  ->
+                let lock, _ = lockEvent
+                lock
+            | None      -> failwith "Missing Event"
+    | None      -> failwith "Missing Workflow"
 
 /// Checks if given event is executed / excluded
 let check_condition (eventName : EventName) (repository : Repository) : bool =
-    failwith "Not implemented yet"
+    let event = get_event eventName repository
+    if event.included = true
+    then
+        if event.executed = true
+        then true
+        else false
+    else true
 
 /// Executed and returns the given envent if the given user have the reqred role
 let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
@@ -151,10 +182,31 @@ let add_relation_from (toEvent : EventName) (relations : RelationType) (fromEven
 
 /// luck given event
 let luck_event (eventName : EventName) (repository : Repository) : Result =
-    failwith "Not implemented yet"
+    let workflow, name = eventName
+    let inner (x : Map<string, bool*Event>) : UpdateMapResult = 
+        match Map.tryFind name x with
+            | Some(x') ->
+                let lock, event = x'
+                if not lock
+                then MapOk(Map.add name (true, event) x)
+                else MapErr(LockConflict)
+            | None -> MapErr(MissingEvent)
+
+    update_inner_map workflow inner repository
+
 /// unluck given event
 let unluck_event (eventName : EventName) (repository : Repository) : Result =
-    failwith "Not implemented yet"
+    let workflow, name = eventName
+    let inner (x : Map<string, bool*Event>) : UpdateMapResult = 
+        match Map.tryFind name x with
+            | Some(x') ->
+                let lock, event = x'
+                if lock
+                then MapOk(Map.add name (false, event) x)
+                else MapErr(LockConflict)
+            | None -> MapErr(MissingEvent)
+
+    update_inner_map workflow inner repository
 
 /// Removes given relation form given event and returns the result
 let remove_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =

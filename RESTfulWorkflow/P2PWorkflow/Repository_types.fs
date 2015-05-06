@@ -4,7 +4,7 @@ type UserName = string              // The name of a user
 type WorkflowName = string          // The name of a workflow
 type Roles = Set<string>           //A list of roles
 type RelationType =                 //The types of relations
-    | Dependent
+    | Condition
     | Exclusion
     | Response
     | Inclusion
