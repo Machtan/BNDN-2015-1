@@ -2,16 +2,6 @@
 
 open Repository_types
 
-//Get
-// let get_events (wfName : WorkflowName)(repos : Repository) : EventName list =
-//    let events = 
-//        match repos.workflows.TryFind(wfName) with
-//        | Some(v) -> v
-//        | None -> failwith "Noooooo" 
-//    let (makeEventnames : EventName list) =
-//        events |> List.map (fun (event) -> (wfName, event))
-//    makeEventnames(events)
-
 //Create
 
 /// Creates and returns a new workflow from a name
@@ -24,15 +14,9 @@ let check_workflow (wfName : WorkflowName) (repos : Repository) : bool =
         | Some(v) -> true
         | None -> false
 
-/// Metodes used when finding all executabel event for a user
-let find_executable_with_roles (workflow : Workflow) (roles : Roles) (magic : SendFunc<'a>) (repos : Repository) : ExecutableInWorkflow =
-//    let name, eventList = workflow
-//    let rec findEvents
-//        match eventList with
-//        | [] -> []
-
-//recursive find the events and :: them together and return them?
-    failwith "Not implemented yed."
+/// Metodes used when finding all executabel event for a user   SHOULD NOT BE IMPLEMENTED
+//let find_executable_with_roles (workflow : Workflow) (roles : Roles) (magic : SendFunc<'a>) (repos : Repository) : ExecutableInWorkflow =
+//    failwith "Not implemented yed."
 
 //Update
 
@@ -44,7 +28,7 @@ let add_event (wfName : WorkflowName) (event : EventName) (repos : Repository) :
         | Some(v) -> v
         | None -> failwith "Workflow Does not exist" 
     Result.Ok({repos with workflows = Map.add wfName (event::events) repos.workflows})
-    //add to event. Event is not a list?
+
 
 //Delete
 
@@ -76,5 +60,4 @@ let delete_workflow (wfName : WorkflowName) (magic : SendFunc<Repository>) (repo
                 deleteEvents events
             | _ -> []
         | _ -> []
-    //call method to remove workflow fom repository?
     Result.Ok({repos with workflows = Map.remove wfName repos.workflows})
