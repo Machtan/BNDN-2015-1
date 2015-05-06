@@ -59,10 +59,10 @@ let create_event (eventName : EventName) (state : EventState) (repository : Repo
     update_inner_map workflow (fun x -> MapOk(Map.add name (false, n) x)) repository
 
 /// Return name and state of given event
-let get_event_state (eventName : EventName) (repository : Repository) : (string*EventState) =
+let get_event_state (eventName : EventName) (repository : Repository) : EventState =
     let _, name = eventName
     let event = get_event eventName repository
-    (name, {executed = event.executed; pending = event.pending; included = event.included;})
+    {executed = event.executed; pending = event.pending; included = event.included;}
 
 /// Check if given event have one of given roles
 let check_roles (eventName : EventName) (roles : Roles) (repository : Repository) : bool =
@@ -71,11 +71,33 @@ let check_roles (eventName : EventName) (roles : Roles) (repository : Repository
     then Set.exists (fun role -> Set.exists (fun event_role -> event_role = role) event.roles) roles
     else true
 
+/// Checks if given event is executeble
+let check_if_executeble (eventName : EventName) (repository : Repository) : bool =
+    failwith "Not implemented yet"
+
+/// Checks if given event is luck'et
+let check_if_lucked (eventName : EventName) (repository : Repository) : bool =
+    failwith "Not implemented yet"
+
+/// Checks if given event is executed / excluded
+let check_condition (eventName : EventName) (repository : Repository) : bool =
+    failwith "Not implemented yet"
+
 /// Executed and returns the given envent if the given user have the reqred role
-let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<'a>) (repository : Repository) : Result =
+let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     //Dummy
     printfn "Send: Find %s's roles" userName
     let usersRoles = set ["Test";"test"] // the users roles
+
+    ///-----Midlertidig---- 
+    //                   Updated state, response, status code
+    // type ResourceResponse<'a> = 'a * string * int
+
+    // A function for the resource request func to send requests through
+    //               partial_resource_url, method, data, state -> response
+    // type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
+
+    //let _, usersRoles, _ = sendFunc (sprintf "user/%s" userName) "GET" "" repository
 
     let workflow, name = eventName
     let event = get_event eventName repository
@@ -108,9 +130,14 @@ let add_event_roles (eventName : EventName) (roles : Roles) (repository : Reposi
     update_inner_event eventName inner repository
 
 /// Adds given relationships (going from first given event) to given event and returns the result
-let add_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<'a>) (repository : Repository) : Result =
+let add_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     //Dummy
     printfn "Send: Add fromRelation (%A %A) to %A" fromEvent relations toEventName
+
+    let thisWorkflow, thisEvent = fromEvent
+    let toWorkflow, toEvent = toEventName
+    let _, _, status = sendFunc (sprintf "%s/%s/%A" thisWorkflow thisEvent relations) "GET" (sprintf "%s, %s" toWorkflow toEvent) repository
+    //test om svaret er rektigt
 
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with toRelations = Set.add (relations, toEventName) event.toRelations})
@@ -122,8 +149,15 @@ let add_relation_from (toEvent : EventName) (relations : RelationType) (fromEven
         EventOk({event with fromRelations = Set.add (relations, fromEventName) event.fromRelations})
     update_inner_event toEvent inner repository
 
+/// luck given event
+let luck_event (eventName : EventName) (repository : Repository) : Result =
+    failwith "Not implemented yet"
+/// unluck given event
+let unluck_event (eventName : EventName) (repository : Repository) : Result =
+    failwith "Not implemented yet"
+
 /// Removes given relation form given event and returns the result
-let remove_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<'a>) (repository : Repository) : Result =
+let remove_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     //Dummy
     printfn "Send: remove fromRelation (%A %A) to %A" fromEvent relations toEventName
 
@@ -134,7 +168,7 @@ let remove_relation_to (fromEvent : EventName) (relations : RelationType) (toEve
     update_inner_event fromEvent inner repository
 
 /// Removes given relation form given event and returns the result
-let remove_relation_from (toEvent : EventName) (relations : RelationType) (fromEventName : EventName) (sendFunc : SendFunc<'a>) (repository : Repository) : Result =
+let remove_relation_from (toEvent : EventName) (relations : RelationType) (fromEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     let inner (event : Event) : UpdateEventResult =
         if Set.contains (relations, fromEventName) event.toRelations
         then EventOk({event with toRelations = Set.remove (relations, fromEventName) event.toRelations})
@@ -142,7 +176,7 @@ let remove_relation_from (toEvent : EventName) (relations : RelationType) (fromE
     update_inner_event toEvent inner repository
 
 /// Deletes given event and returns it if its susesful
-let delete_event (eventName : EventName) (sendFunc : SendFunc<'a>) (repository : Repository) : Result =
+let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     //Dummy
     let workflow, eName = eventName
     let event = get_event eventName repository

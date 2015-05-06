@@ -11,7 +11,10 @@ let create_user (user : UserName) : ResultUser =
 //Read
 
 /// Metodes used when finding all executabel event for a user 
-let find_executable_events (user : User) : Executable =
+//let find_executable_events (user : User) : Executable =
+//    failwith "Not implemented yed."
+/// Return name and state of given event
+let get_user_roles (user : UserName)  (workflow : WorkflowName) (repository : Repository) : Roles list =
     failwith "Not implemented yed."
 
 //Update
