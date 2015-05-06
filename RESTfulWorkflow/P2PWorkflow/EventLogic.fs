@@ -101,8 +101,8 @@ let check_if_lucked (eventName : EventName) (repository : Repository) : bool =
             | Some(lockEvent)  ->
                 let lock, _ = lockEvent
                 lock
-            | None      -> failwith "Missing Event"
-    | None      -> failwith "Missing Workflow"
+            | None -> failwith "Missing Event"
+    | None -> failwith "Missing Workflow"
 
 /// Checks if given event is executed / excluded
 let check_condition (eventName : EventName) (repository : Repository) : bool =
@@ -116,44 +116,42 @@ let check_condition (eventName : EventName) (repository : Repository) : bool =
 
 /// Executed and returns the given envent if the given user have the reqred role
 let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    //Dummy
-    printfn "Send: Find %s's roles" userName
-    let usersRoles = set ["Test";"test"] // the users roles
-
-    ///-----Midlertidig---- 
-    //                   Updated state, response, status code
-    // type ResourceResponse<'a> = 'a * string * int
-
-    // A function for the resource request func to send requests through
-    //               partial_resource_url, method, data, state -> response
-    // type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
-
-    //let _, usersRoles, _ = sendFunc (sprintf "user/%s" userName) "GET" "" repository
-
-    let workflow, name = eventName
-    let event = get_event eventName repository
-    let inner (x : Map<string, bool*Event>) : UpdateMapResult = 
-        match Map.tryFind name x with
-            | Some(x') ->
-                let lock, event = x'
-                MapOk(Map.add name (lock, {event with executed = true; pending = false}) x)
-            | None -> MapErr(MissingEvent)
+    if check_if_executeble eventName sendFunc repository
+    then
+        let _, answer, _ = send (GetUserRoles(userName)) sendFunc repository
+        let usersRoles = Set.ofArray (answer.Split ',')
+        if check_roles eventName usersRoles repository
+        then
+            let event = get_event eventName repository
+            let onlyNecessary x =
+              let typ, _ = x
+              typ = Condition || typ = Exclusion
+            let setSplit acc x =
+                let _, event = x
+                Set.add event acc
+            let lockSet = Set.fold setSplit Set.empty (Set.union (Set.filter onlyNecessary event.fromRelations) event.toRelations)
+            if Set.forall (fun x -> check_if_positive (send (Lock(x)) sendFunc repository)) lockSet
+            then
+                let updateState x =
+                    let typ, event = x
+                    match typ with
+                    | Condition -> true
+                    | Exclusion -> check_if_positive (send (SetIncluded(event, false)) sendFunc repository)
+                    | Response  -> check_if_positive (send (SetPending(event, true)) sendFunc repository)
+                    | Inclusion -> check_if_positive (send (SetIncluded(event, true)) sendFunc repository)
+                if Set.forall updateState event.toRelations
+                then
+                    if Set.forall (fun x -> check_if_positive (send (Unlock(x)) sendFunc repository)) lockSet
+                    then
+                        let inner (event : Event) : UpdateEventResult =
+                            EventOk({event with executed = true; pending = false})
+                        update_inner_event eventName inner repository
+                    else Error("ERROR: It's not possible to unlock all events!!!")
+                else Error("ERROR: It's not possible to chenge all the states!!!")
+            else LockConflict
+        else Unauthorized
+    else NotExecutable
     
-    if not event.included
-    then NotExecutable
-    else
-        //lock andre events
-        printfn "Send: luck's to many event :P"
-        //Check conditions
-        printfn "Send: checks alle the contitions :P"
-        if Set.isEmpty event.roles 
-        then update_inner_map workflow inner repository
-        //{event with executed = true; pending = false})
-        else
-            if check_roles eventName usersRoles repository
-            then update_inner_map workflow inner repository
-            else Unauthorized
-
 /// Adds given roles to given event and returns the result
 let add_event_roles (eventName : EventName) (roles : Roles) (repository : Repository) : Result =
     let inner (event : Event) : UpdateEventResult =
