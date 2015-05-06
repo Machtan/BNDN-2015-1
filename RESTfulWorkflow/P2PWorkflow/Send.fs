@@ -7,9 +7,9 @@ type Message =
 | GetIfCondition            of EventName
 | Lock                      of EventName
 | Unlock                    of EventName
-| SetExcluded               of EventName * bool               // The target event becomes excluded
 | SetIncluded               of EventName * bool                // The target event becomes included
 | SetPending                of EventName * bool                // The target event becomes pending
+| GetUserRoles              of UserName
 
 /// Sends given message with the use of pastery.fs
 let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Repository) : ResourceResponse<Repository> =
@@ -26,15 +26,14 @@ let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Rep
     | Unlock(eventName)         ->
         let workflow, name = eventName
         sendFunc (sprintf "%s/%s/unlock" workflow name) "PUT" "" repository
-    | SetExcluded(eventName, x)    ->
-        let workflow, name = eventName
-        sendFunc (sprintf "%s/%s/excluded" workflow name) "PUT" (sprintf "%A" x) repository
-    | SetIncluded(eventName, x)    ->
+    | SetIncluded(eventName, x) ->
         let workflow, name = eventName
         sendFunc (sprintf "%s/%s/included" workflow name) "PUT" (sprintf "%A" x) repository
-    | SetPending(eventName, x)     ->
+    | SetPending(eventName, x)  ->
         let workflow, name = eventName
         sendFunc (sprintf "%s/%s/pending" workflow name) "PUT" (sprintf "%A" x) repository
+    | GetUserRoles(userName)    ->
+        failwith "not implemented yed"
 
 /// tests if a ResourceResponse is positive
 let check_if_positive (response : ResourceResponse<Repository>) : bool =

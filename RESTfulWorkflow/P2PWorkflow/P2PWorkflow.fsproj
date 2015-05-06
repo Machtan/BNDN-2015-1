@@ -48,12 +48,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Repository_types.fs" />
+    <Compile Include="Send.fsi" />
+    <Compile Include="Send.fs" />
     <Compile Include="EventLogic.fsi" />
     <Compile Include="EventLogic.fs" />
     <Compile Include="WorkflowLogic.fsi" />
     <Compile Include="UserLogic.fsi" />
-    <Compile Include="Send.fsi" />
-    <Compile Include="Send.fs" />
     <None Include="App.config" />
     <Compile Include="WorkflowOld.fs" />
     <Compile Include="RestAPI.fsi" />
