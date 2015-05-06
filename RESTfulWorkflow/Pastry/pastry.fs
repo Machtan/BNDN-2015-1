@@ -84,6 +84,32 @@ let reply (response: HttpListenerResponse) (answer: string) (status: int) (reaso
     response.OutputStream.Write(buffer,0,buffer.Length);
     response.OutputStream.Close();
 
+// Sends a backup state to the nodes that are watching this node
+let send_backup_state (node: Node) (state_msg: string) =
+    let closer_than k acc =
+        distance k node.guid < distance acc node.guid
+
+    let folder k _ acc =
+        if (valid_min_leaf node k) && (closer_than k acc) then k
+        else acc
+
+    let minleaf = Map.foldBack folder node.leaves node.minleaf
+    if minleaf = node.guid then // No smaller leaves
+        // Send it to the highest leaf
+        printfn "PASTRY: No other leaves, backup delayed..."
+    else
+        let address =
+            match Map.tryFind minleaf node.leaves with
+            | Some(addr) ->
+                addr
+            | None ->
+                failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
+        match send_message address Backup state_msg minleaf with
+        | None ->
+            printfn "PASTRY: No reply for backup: Handle node failure?"
+        | Some(resp, status) ->
+            ()
+
 // Adds the given node as a neighbor if it makes sense (I'm not using this ATM)
 let try_add_neighbor (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
     if node.neighbors.Count < MAX_LEAVES then
@@ -335,30 +361,6 @@ let try_forward_resource<'a> (node: Node) (split_res_path: string list)
     | Error(msg, status, reason) ->
         Invalid(msg, status, reason)
 
-// Sends a backup state to the nodes that are watching this node
-let send_backup_state (node: Node) (state_msg: string) =
-    let folder k v acc =
-        if k < node.guid && distance k node.guid < distance acc node.guid then
-            k
-        else
-            acc
-    let minleaf = Map.foldBack folder node.leaves node.guid
-    if minleaf = node.guid then // No smaller leaves
-        // Send it to the highest leaf
-        printfn "PASTRY: No other leaves, backup delayed..."
-    else
-        let address =
-            match Map.tryFind minleaf node.leaves with
-            | Some(addr) ->
-                addr
-            | None ->
-                failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
-        match send_message address Backup state_msg minleaf with
-        | None ->
-            printfn "PASTRY: No reply for backup: Handle node failure?"
-        | Some(resp, status) ->
-            ()
-
 // Makes the given pastry node start listening...
 let start_listening<'a> (node: Node) (inter_arg: PastryInterface<'a>) =
     printfn "Initializing..."
@@ -370,6 +372,7 @@ let start_listening<'a> (node: Node) (inter_arg: PastryInterface<'a>) =
 
     // Listen for a a message
     let rec listen (node: Node) (inter: PastryInterface<'a>) =
+        printfn "> Waiting..."
         let cxt      = listener.GetContext()
         let request  = cxt.Request
         let response = cxt.Response
@@ -395,7 +398,18 @@ let start_listening<'a> (node: Node) (inter_arg: PastryInterface<'a>) =
                 Invalid(error_message, 404, "Illegal action")
 
             | "resource"::resource_path_parts -> // Someone requests a resource
-                try_forward_resource node resource_path_parts meth body response inter
+                let res = try_forward_resource node resource_path_parts meth body response inter
+                // Handle sending of backups
+                match res with
+                | Valid(node', state') ->
+                    // Serialize the updated state
+                    let state_msg = inter.serialize state'
+
+                    // Send it to the node closest to itself
+                    send_backup_state node state_msg
+
+                    res
+                | _ -> res
 
             | _ ->
                 let error_message = sprintf "Not related to this: %s" path
@@ -404,12 +418,6 @@ let start_listening<'a> (node: Node) (inter_arg: PastryInterface<'a>) =
         // NOTE: Only invalid requests are automatically replied
         match result with
         | Valid(updated_node, updated_state) ->
-
-            // Serialize the updated state
-            let state_msg = inter.serialize updated_state
-            // Send it to the node closest to itself
-            //send_backup_state node state_msg
-
             listen updated_node { inter with state = updated_state; }
         | Invalid(error_message, status, reason) ->
             error error_message
