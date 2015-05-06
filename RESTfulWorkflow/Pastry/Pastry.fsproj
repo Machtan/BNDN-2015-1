@@ -66,9 +66,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="async_http.fs" />
+    <Compile Include="PastryTypes.fs" />
+    <Compile Include="PastryUtils.fs" />
     <None Include="App.config" />
     <Compile Include="pastry.fs" />
     <Compile Include="Pastry.Routing.Tests.fs" />
+    <Compile Include="PastryDemo.fs" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>

@@ -4,7 +4,7 @@ type UserName = string              // The name of a user
 type WorkflowName = string          // The name of a workflow
 type Roles = Set<string>           //A list of roles
 type RelationType =                 //The types of relations
-    | Dependent
+    | Condition
     | Exclusion
     | Response
     | Inclusion
@@ -15,7 +15,7 @@ type EventState = {
 }
 
 
-type User = UserName*(WorkflowName*Roles list)  // The name of a user + witch roles he have it witch workflow
+type User = UserName*((WorkflowName*Roles) list)  // The name of a user + witch roles he have it witch workflow
 type EventName = WorkflowName*string      // WorkflowName*EventName
 type Workflow = WorkflowName*(EventName list)  // The name of a workflow and the events it contain
 
@@ -49,10 +49,10 @@ type Repository = {
 
 // posible results when working with users
 type ResultUser =
-    | Ok of User
+    | Ok of Repository
     | Unauthorized
     | NotExecutable
-    | MissingEvent of string
+    | MissingUser
 
 // posible results when working with workflows
 type ResultWorkflow =
@@ -69,3 +69,21 @@ type ResultEvent =
     | MissingRelation
     | Error of string
     | LockConflict
+
+///-----Midlertidig---- 
+// Updated state, response, status code
+type ResourceResponse<'a> = 'a * string * int
+
+// A function for the resource request func to send requests through
+// partial_resource_url, method, data, state -> response
+type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
+
+type Result =
+    | Ok of Repository
+    | Unauthorized
+    | NotExecutable
+    | MissingRelation
+    | MissingEvent
+    | MissingWorkflow
+    | LockConflict
+    | Error of string
