@@ -16,8 +16,7 @@ open Repository_types
 
 /// Creates and returns a new workflow from a name
 let create_workflow (wfName : WorkflowName) (repos : Repository) : Result =
-    let workflows = repos.workflows.Add(wfName, [])
-    Result.Ok(repos)
+    Result.Ok({repos with workflows = Map.add wfName [] repos.workflows})
 
 //Read
 let check_workflow (wfName : WorkflowName) (repos : Repository) : bool =
@@ -36,43 +35,47 @@ let find_executable_with_roles (workflow : Workflow) (roles : Roles) (magic : Se
 //Update
 
 /// Adds a given event to a given Workflow and returns the result
-let add_event (wfName : WorkflowName) (event : EventName) (repos : Repository) : ResultWorkflow =
+let add_event (wfName : WorkflowName) (event : EventName) (repos : Repository) : Result =
+    let workflowName, event = event
     let events = 
         match repos.workflows.TryFind(wfName) with
         | Some(v) -> v
-        | None -> failwith "Noooooo" 
-    let (makeEventnames : EventName list) =
-        events |> List.map (fun (event) -> (wfName, event))
-    ResultWorkflow.Ok(wfName, event::makeEventnames)
-    //does this meathod rly add a event to the repos?
+        | None -> failwith "Workflow Does not exist" 
+    Result.Ok({repos with workflows = Map.add wfName (event::events) repos.workflows})
+    //add to event. Event is not a list?
 
 //Delete
 
 /// Removes given event form given workflow and returns the result
-let remove_event (workflow : WorkflowName) (event : EventName) (magic : SendFunc<'a>) (repos : Repository) : ResultWorkflow =
-    let wfName, eventNameList = workflow
-    let rec remove_first eventNameList event =
-        match eventNameList with
-        |h::eventNameList when h = event -> eventNameList
-        |h::eventNameList -> h::(remove_first eventNameList event)
+let remove_event (wfName : WorkflowName) (event : EventName) (magic : SendFunc<'a>) (repos : Repository) : Result =
+    let workflowName, event = event
+    let events = 
+        match repos.workflows.TryFind(wfName) with
+        | Some(v) -> v
+        | None -> failwith "Workflow Does not exist" 
+    let rec remove_first events event =
+        match events with
+        |h::events when h = event -> events
+        |h::events -> h::(remove_first events event)
         | _ -> []
-    ResultWorkflow.Ok(wfName, (remove_first eventNameList event))
+    Result.Ok({repos with workflows = Map.add wfName (remove_first events event) repos.workflows})
 
 /// Deletes given workflow and returns it if its susesful
-let delete_workflow (workflow : Workflow) (magic : SendFunc<'a>) (repos : Repository) : ResultWorkflow =
-    let wfName, eventNameList = workflow
+let delete_workflow (wfName : WorkflowName) (magic : SendFunc<'a>) (repos : Repository) : Result =
+    let events = 
+        match repos.workflows.TryFind(wfName) with
+        | Some(v) -> v
+        | None -> failwith "Workflow Does not exist" 
+    let (makeEventnames : EventName list) =
+        events |> List.map (fun (event) -> (wfName, event))
     let rec deleteEvents eventNameList=
         match eventNameList with
         | h::eventNameList ->
-            match remove_event workflow h magic repos with  
-            |ResultWorkflow.Ok(x) -> 
+            match remove_event wfName h magic repos with  
+            |Result.Ok(x) -> 
                 let wfN, eventNList = x
                 deleteEvents eventNList
             | _ -> []
         | _ -> []
     //call method to remove workflow fom repository?
-    ResultWorkflow.Ok("", [])
-
-
-
-
+    Result.Ok({repos with workflows = Map.remove wfName repos.workflows})
