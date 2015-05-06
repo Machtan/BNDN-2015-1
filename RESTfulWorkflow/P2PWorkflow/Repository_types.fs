@@ -21,7 +21,7 @@ type Workflow = WorkflowName*(EventName list)  // The name of a workflow and the
 
 // Shemas used when finding all executabel event for a user
 type ExecutableInWorkflow = WorkflowName*(string*EventState list)
-type Executable = Map<WorkflowName, string*EventState list>
+type Executable = Map<WorkflowName, (string*EventState) list>
 
 type Relation = RelationType*EventName      // A relation containd by a event
 type ToRelations = Set<Relation>
