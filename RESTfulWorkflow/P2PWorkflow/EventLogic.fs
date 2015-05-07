@@ -131,7 +131,25 @@ let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<R
                 let _, event = x
                 Set.add event acc
             let lockSet = Set.fold setSplit Set.empty (Set.union (Set.filter onlyNecessary event.fromRelations) event.toRelations)
-            if Set.forall (fun x -> check_if_positive (send (Lock(x)) sendFunc repository)) lockSet
+            let lockMany (x : Set<EventName>) : bool =
+                let inner x s =
+                    let status, acc = s
+                    if status
+                    then
+                        if (check_if_positive (send (Lock(x)) sendFunc repository))
+                        then (status, Set.add x acc)
+                        else (false, acc)
+                    else s
+
+                let status, unlockSet = Set.foldBack inner lockSet (false, Set.empty)
+                if status
+                then true
+                else
+                    if Set.forall (fun x -> check_if_positive (send (Lock(x)) sendFunc repository)) unlockSet
+                    then false
+                    else failwith "... No good"
+
+            if lockMany lockSet
             then
                 let updateState x =
                     let typ, event = x
@@ -173,6 +191,22 @@ let add_relation_from (toEvent : EventName) (relations : RelationType) (fromEven
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with fromRelations = Set.add (relations, fromEventName) event.fromRelations})
     update_inner_event toEvent inner repository
+
+/// Chance state
+let set_included (eventName : EventName) (newState : bool) (repository : Repository) : Result =
+    let inner (event : Event) : UpdateEventResult =
+        EventOk({event with included = newState})
+    update_inner_event eventName inner repository
+
+let set_pending (eventName : EventName) (newState : bool) (repository : Repository) : Result =
+    let inner (event : Event) : UpdateEventResult =
+        EventOk({event with pending = newState})
+    update_inner_event eventName inner repository
+
+let set_executed (eventName : EventName) (newState : bool) (repository : Repository) : Result =
+    let inner (event : Event) : UpdateEventResult =
+        EventOk({event with executed = newState})
+    update_inner_event eventName inner repository
 
 /// luck given event
 let luck_event (eventName : EventName) (repository : Repository) : Result =

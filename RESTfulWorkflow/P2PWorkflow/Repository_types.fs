@@ -83,7 +83,6 @@ type Result =
     | Error of string
 
 type Message =
-    | GetStatus                 of EventName                // workflow, event  (executed, included)
     | GetIfCondition            of EventName
     | Lock                      of EventName
     | Unlock                    of EventName

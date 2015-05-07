@@ -31,6 +31,10 @@ val add_event_roles:            EventName -> Roles -> Repository -> Result
 val add_relation_to:            EventName -> RelationType -> EventName -> SendFunc<Repository> -> Repository -> Result
 /// Adds given relationships (going to given event) to given event and returns the result
 val add_relation_from:          EventName -> RelationType -> EventName -> Repository -> Result
+/// Chance state
+val set_included:               EventName -> bool -> Repository -> Result
+val set_pending:                EventName -> bool -> Repository -> Result
+val set_executed:               EventName -> bool -> Repository -> Result
 /// luck given event
 val luck_event:                 EventName -> Repository -> Result
 /// unluck given event
