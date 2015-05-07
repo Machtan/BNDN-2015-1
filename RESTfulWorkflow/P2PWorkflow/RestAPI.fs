@@ -50,9 +50,9 @@ let getPending event workflowName repo : ResourceResponse<Repository> =
         | None ->  (repo,"Event could not be received.", statusCode)
 
 // Attempts to execute the given event
-let setExecuted workflowName eventName role repo sendFunc :ResourceResponse<Repository>  =
+let setExecuted workflowName eventName userName repo sendFunc :ResourceResponse<Repository>  =
     let event = (workflowName,eventName): EventName
-    let response = execute event role sendFunc repo
+    let response = execute event userName sendFunc repo
     match (response) with
             | Result.Ok(r) -> (r,"Executed", 201)
             | Result.Unauthorized -> (repo,"Unauthorized", 401)
@@ -130,16 +130,12 @@ let createWorkflow workflowName repo  : ResourceResponse<Repository> =
             | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
             
 let deleteWorkflow workflowName repo  : ResourceResponse<Repository> =
-        failwith "Not Implemented"
-//        let workflow = (workflowName, ??)
-//        let response = delete_workflow workflow repo
-//        match (response) with
-//            | ResultWorkflow.Ok(w) -> (repo,"Deleted.", 200)
-//            | ResultWorkflow.Unauthorized -> (repo,"Unauthorized", 401)
-//            | ResultWorkflow.NotExecutable -> (repo,"The event is not executable.", 400)
-//            | ResultWorkflow.MissingRelation -> (repo,"The relation is missing.", 400)
-//            | ResultWorkflow.LockConflict -> (repo,"Encountered LockConflict.", 400)
-//            | ResultWorkflow.Error(s) -> (repo,s, 400)
+        let response = delete_workflow workflowName repo
+        match (response) with
+            | Result.Ok(r) -> (r,"Deleted.", 200)
+            | Result.Unauthorized -> (repo,"Unauthorized", 401)
+            | Result.NotExecutable -> (repo,"The event is not executable.", 400)
+            | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
 
 
 let createUser userName repo  : ResourceResponse<Repository> =
@@ -158,6 +154,11 @@ let deleteUser userName repo  : ResourceResponse<Repository> =
             | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
             | ResultUser.MissingUser -> (repo,"The relation is missing.", 400) 
 
+
+let getWorkFlowEvents workflow repo  : ResourceResponse<Repository> = 
+        let response = get_workflow_events workflow repo
+        (repo,String.concat "," response, 200)
+
 // Creates a new repository
 let create_repository () : Repository =
     { events = Map.empty; users = Map.empty; workflows = Map.empty; logs = []; }
@@ -174,12 +175,11 @@ let handle_user (user_name: string) (meth: string) (repo: Repository) : Resource
     | "DELETE" -> // Delete a user
         deleteUser user_name repo
     | "GET" -> // Get the workflow permissions of a user
-        failwith "Not Implemented"
-//        match Map.tryFind user_name repo.users with
-//        | None ->
-//            repo, "User not found", 404
-//        | Some(user) ->
-//            repo, serialize_user_permissions user, 200
+        match Map.tryFind user_name repo.users with
+        | None ->
+            repo, "User not found", 404
+        | Some(user) ->
+            repo, serialize_user_permissions user, 200
     | _ ->
         repo, "Unsupported user operation", 400
 
@@ -190,7 +190,7 @@ let SEPARATOR = "\n"
 let handle_workflow (wf: string) (meth: string) (repo: Repository) : ResourceResponse<Repository> =
     match meth with
     | "GET" ->
-        failwith "Not Implemented"
+        getWorkFlowEvents wf repo
     | "POST" ->
         createWorkflow wf repo
     | "DELETE" ->
@@ -212,7 +212,7 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         | "GET", "executed" ->
             getExecuted event_name workflow_name repo
         | "PUT", "executed" ->
-            setExecuted workflow_name event_name attribute repo sendFunc
+            setExecuted workflow_name event_name message repo sendFunc
         | "GET", "pending" ->
             getPending event_name workflow_name repo
         | "GET", "included" ->
@@ -247,3 +247,43 @@ let resource_handler (path: string) (meth: string) (message: string) (send_func:
             printfn "Invalid path gotten: %s" path
             initial_state, "Invalid path", 400
     response
+
+let KonoTestoKawaii =
+    printfn "Hello migrator"
+
+    let user_list = [
+        ("Bob", ("Bob", [("Hospital", Set.ofList ["Medic"; "Patient"; "Janitor"])]));
+        ("Alice", ("Alice", [("Jail", Set.ofList ["Medic"; "Inmate"; "Head honcho"])]));
+    ]
+    let repo_list = [
+        ("Hospital", ["Enter"; "Leave"; "Surgery"; "Terrible accident"; "Zombie outbreak"]);
+        ("Kindergarten", ["Enter"; "Eat"; "Run with scissors"; "Play with mud"])
+    ]
+    let eve w n i p e r t =
+        let event = {
+            name = (w, n);
+            included = i;
+            pending = p;
+            executed = e;
+            toRelations = Set.ofList t;
+            fromRelations = Set.empty;
+            roles = Set.ofList r
+        }
+        (false, event)
+    let event_list = [
+        ("Hospital", Map.ofList [
+            ("Enter", eve "Hospital" "Enter" true true false ["Patient"] [(Condition,("Hospital", "Leave")); (Condition, ("Hospital", "Surgery"))]);
+            ("Surgery", eve "Hospital" "Surgery" false false true ["Medic"] [(Condition, ("Hospital", "Terrible accident"))]);
+            ("Zombie outbreak", eve "Hospital" "Zombie outbreak" true false false ["Janitor"] []);
+        ]);
+    ]
+    let test_repository = {
+        events = Map.ofList event_list;
+        users = Map.ofList user_list;
+        workflows = Map.ofList repo_list;
+        logs = [];
+    }
+
+    let resp = handle_event "Hospital" "Enter" "executed" "PUT" "Bob"  test_repository (fun a b c d ->  (test_repository,"Medic,Patient,Janitor", 200))
+    let resp2 = handle_event "Hospital" "Enter" "executed" "GET" "Bob"  test_repository (fun a b c d ->  (test_repository, "Medic,Patient,Janitor", 200))
+    0

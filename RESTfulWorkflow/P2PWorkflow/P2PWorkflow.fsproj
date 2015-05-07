@@ -64,8 +64,8 @@
     <Compile Include="WorkflowLogic.fs" />
     <Compile Include="UserLogic.fs" />
     <Compile Include="RestAPI.fs" />
-    <Compile Include="Program.fs" />
     <None Include="packages.config" />
+    <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Pastry\Pastry.fsproj">

@@ -118,7 +118,8 @@ let check_condition (eventName : EventName) (repository : Repository) : bool =
 let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     if check_if_executeble eventName sendFunc repository
     then
-        let _, answer, _ = send (GetUserRoles(userName)) sendFunc repository
+        let workflow, _ = eventName
+        let _, answer, _ = send (GetUserRoles(userName, workflow)) sendFunc repository
         let usersRoles = Set.ofArray (answer.Split ',')
         if check_roles eventName usersRoles repository
         then

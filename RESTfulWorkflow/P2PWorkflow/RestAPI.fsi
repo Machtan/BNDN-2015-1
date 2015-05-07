@@ -6,3 +6,5 @@ open System.Net
 open WorkflowOld
 
 val resource_handler: string -> string -> string -> SendFunc<Repository> -> Repository -> ResourceResponse<Repository>
+
+val KonoTestoKawaii: int

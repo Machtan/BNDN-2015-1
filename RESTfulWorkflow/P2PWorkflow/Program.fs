@@ -1,4 +1,5 @@
-﻿open Pastry
+﻿module something
+open Pastry
 open Newtonsoft.Json
 open Rest
 open Repository_types
@@ -6,6 +7,7 @@ open Repository_types
 // Small-scale testing entry point
 [<EntryPoint>]
 let main args =
+    let r  = KonoTestoKawaii
     printfn "Danish Pastry!"
     match args with
     | [|addr; port; peer; guid|] ->
