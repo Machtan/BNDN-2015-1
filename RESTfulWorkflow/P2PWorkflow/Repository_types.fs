@@ -88,7 +88,7 @@ type Message =
     | Unlock                    of EventName
     | SetIncluded               of EventName * bool                // The target event becomes included
     | SetPending                of EventName * bool                // The target event becomes pending
-    | GetUserRoles              of UserName
+    | GetUserRoles              of UserName * WorkflowName
     | AddFromRelation           of EventName * RelationType * EventName
     | RemoveFromRelation        of EventName * RelationType * EventName
     | RemoveToRelation          of EventName * RelationType * EventName
