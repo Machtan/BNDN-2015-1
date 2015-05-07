@@ -19,6 +19,12 @@ let check_workflow (wfName : WorkflowName) (repos : Repository) : bool =
 //let find_executable_with_roles (workflow : Workflow) (roles : Roles) (magic : SendFunc<'a>) (repos : Repository) : ExecutableInWorkflow =
 //    failwith "Not implemented yed."
 
+/// Gets all events in given workflow
+let get_workflow_events (wfName : WorkflowName) (repos : Repository) : string list =
+    match Map.tryFind wfName repos.workflows with
+    | Some(x)   -> x
+    | None      -> failwith "Workflow Does not exist"
+
 //Update
 
 /// Adds a given event to a given Workflow and returns the result

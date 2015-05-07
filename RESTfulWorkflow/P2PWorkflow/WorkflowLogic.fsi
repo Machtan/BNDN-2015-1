@@ -14,6 +14,8 @@ val create_workflow:            WorkflowName -> Repository -> Result
 //val find_executable_with_roles: WorkflowName -> Roles -> SendFunc<Repository> -> Repository -> ExecutableInWorkflow
 /// Check if given workflow exsist
 val check_workflow:             WorkflowName -> Repository -> bool
+/// Gets all events in given workflow
+val get_workflow_events:        WorkflowName -> Repository -> string list
 
 //Update
 
