@@ -268,14 +268,26 @@ let migrate_dead_leaf<'a> (node: Node) (neighbor: GUID)
     let (state', resp, status) = inter.handle "migrate" "PUT" node.backup inter.send inter.state
     state'
 
-// Finds the GUID of the neighbor that this node watches over
-let find_watched_neighbor (node: Node) =
+// Finds the leaf that is to the left of this node
+let find_left_leaf (node: Node) : GUID =
+    let closer_than k acc =
+        distance k node.guid < distance acc node.guid
+    let folder k _ acc =
+        if (valid_min_leaf node k) && (closer_than k acc) then k
+        else acc
+    Map.foldBack folder node.leaves node.minleaf
+
+// Finds the leaf that is to the right of this node
+let find_right_leaf (node: Node) : GUID =
     let closer_than k acc =
         distance k node.guid < distance acc node.guid
     let folder k _ acc =
         if (valid_max_leaf node k) && (closer_than k acc) then k
         else acc
     Map.foldBack folder node.leaves node.maxleaf
+
+// Finds the GUID of the neighbor that this node watches over
+let find_watched_neighbor (node: Node) = find_right_leaf node
 
 // Handles that a node in the leaf set has failed
 let handle_dead_leaf<'a> (node: Node) (leaf: GUID) (route_func: RouteFunc<'a>)
@@ -326,9 +338,23 @@ let handle_dead_leaf<'a> (node: Node) (leaf: GUID) (route_func: RouteFunc<'a>)
         (Map.foldBack update_folder state.leaves updated_node), updated_state
 
 // Updates this node based on a new node that is joining the network
-let update_node (node: Node) (new_node: Node) : Node =
-    let updated_leaves = try_add_leaf node new_node.guid new_node.address
-    try_add_neighbor updated_leaves new_node.guid new_node.address
+let update_node<'a> (node: Node) (new_node: Node) (inter: PastryInterface<'a>)
+    : Node * 'a  =
+    let node_with_leaves = try_add_leaf node new_node.guid new_node.address
+    //try_add_neighbor updated_leaves new_node.guid new_node.address
+
+    // Find out whether this node is a close leaf (1 smaller or larger)
+    let is_left_leaf = (new_node.guid = find_left_leaf node_with_leaves)
+    let is_right_leaf = (new_node.guid = find_right_leaf node_with_leaves)
+    if is_left_leaf || is_right_leaf then
+        let own_id = serialize_guid node.guid
+        let other_id = serialize_guid new_node.guid
+        printfn "PASTRY: MIGRATE: The new node %s is my neighbor!" other_id
+        let path = sprintf "migrate/%s/%s" own_id other_id
+        let (state', resp, status) = inter.handle path "PUT" "" inter.send inter.state
+        node_with_leaves, state'
+    else
+        node_with_leaves, inter.state
 
 // Handles a message intended for this node
 let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: GUID)
@@ -349,9 +375,9 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
         updated_node, inter.state, ("Joined", 200)
 
     | Update -> // The node is notified of a new node joining
-        let updated_node = update_node node <| deserialize message
+        let (updated_node, updated_state) = update_node node (deserialize message) inter
         printfn "PASTRY: State after update: %A" updated_node
-        updated_node, inter.state, ("Updated", 200)
+        updated_node, updated_state, ("Updated", 200)
 
     | Resource(path, meth) -> // Request for a resource here
         printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
