@@ -1,6 +1,5 @@
 ﻿module UserLogic
 
-open Pastry
 open Repository_types
 open EventLogic
 

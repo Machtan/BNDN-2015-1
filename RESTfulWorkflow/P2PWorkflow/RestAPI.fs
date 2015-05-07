@@ -15,13 +15,7 @@ let split (str: string) (c: char) =
 let getEvent workflowName eventName repository : (EventState option * string * int) =
         let event = (workflowName,eventName) : EventName
         let response = get_event_state event repository
-        match (response) with
-            | Result.Ok(event) -> (Some(event),"Ok", 200)
-            | Result.Result.Unauthorized -> (None,"Unauthorized", 401)
-            | Result.NotExecutable -> (None,"The event is not executable.", 400)
-            | Result.MissingRelation -> (None,"The relation is missing.", 400)
-            | Result.LockConflict -> (None,"Encountered LockConflict.", 400)
-            | Result.Error(s) -> (None,s, 400)
+        Some(response),"Ok", 200
 
 // Gets the 'executed' state of an event
 let getExecuted event workflowName repo : ResourceResponse<Repository> =
@@ -40,14 +34,12 @@ let getIncluded event workflowName repo : ResourceResponse<Repository>  =
         | None ->  (repo,"Event could not be received.", statusCode)
 
 // Gets the 'executable' state of an event
-let getExecutable event workflowName repo  : ResourceResponse<Repository> =
-    //let res = getEvent event state
-    //let (msg, status, info, optState) = res
-    //match optState with
-    //| Some(_, _, excluded, _) ->
-    //    (string excluded), status, info, state
-    //| None -> msg, status, info, state
-    failwith "Not Implemented"
+let getExecutable event workflowName repo sendfunc  : ResourceResponse<Repository> =
+    let response = getEvent workflowName event repo
+    let (eventState,message,statusCode) = response
+    match (eventState) with
+        | Some(evState) ->  (repo,string (check_if_executeble (workflowName,event) sendfunc repo), statusCode)
+        | None ->  (repo,"Event could not be received.", statusCode)
 
 // Gets the 'pending' state of an event
 let getPending event workflowName repo : ResourceResponse<Repository> =
@@ -112,7 +104,7 @@ let addRelation workflowName eventName attribute repo sendFunc : ResourceRespons
     let rel =
         match typ with
         | "exclusion"   -> Some(Exclusion)
-        | "condition"   -> Some(Dependent)
+        | "condition"   -> Some(Condition)
         | "response"    -> Some(Response)
         | "inclusion"   -> Some(Inclusion)
         | _             -> None
@@ -132,10 +124,10 @@ let addRelation workflowName eventName attribute repo sendFunc : ResourceRespons
 let createWorkflow workflowName repo  : ResourceResponse<Repository> =
         let response = create_workflow workflowName repo
         match (response) with
-            | ResultWorkflow.Ok(w) -> (repo,"Created.", 201)
-            | ResultWorkflow.Unauthorized -> (repo,"Unauthorized", 401)
-            | ResultWorkflow.NotExecutable -> (repo,"The event is not executable.", 400)
-            | ResultWorkflow.MissingEvent(s) -> (repo,s, 400)
+            | Result.Ok(r) -> (r,"Created.", 201)
+            | Result.Unauthorized -> (repo,"Unauthorized", 401)
+            | Result.NotExecutable -> (repo,"The event is not executable.", 400)
+            | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
             
 let deleteWorkflow workflowName repo  : ResourceResponse<Repository> =
         failwith "Not Implemented"
@@ -149,6 +141,23 @@ let deleteWorkflow workflowName repo  : ResourceResponse<Repository> =
 //            | ResultWorkflow.LockConflict -> (repo,"Encountered LockConflict.", 400)
 //            | ResultWorkflow.Error(s) -> (repo,s, 400)
 
+
+let createUser userName repo  : ResourceResponse<Repository> =
+        let response = create_user userName repo
+        match (response) with
+            | ResultUser.Ok(r) -> (r,"Created.", 201)
+            | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
+            | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
+            | ResultUser.MissingUser -> (repo,"user is missing", 400)
+
+let deleteUser userName repo  : ResourceResponse<Repository> = 
+        let response = delete_user userName repo
+        match (response) with
+            | ResultUser.Ok(w) -> (repo,"Deleted.", 200)
+            | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
+            | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
+            | ResultUser.MissingUser -> (repo,"The relation is missing.", 400) 
+
 // Creates a new repository
 let create_repository () : Repository =
     { events = Map.empty; users = Map.empty; workflows = Map.empty; logs = []; }
@@ -161,15 +170,16 @@ let serialize_user_permissions (user: User) : string =
 let handle_user (user_name: string) (meth: string) (repo: Repository) : ResourceResponse<Repository> =
     match meth with
     | "POST" -> // Create a new user
-        failwith "Not Implemented"
+        createUser user_name repo
     | "DELETE" -> // Delete a user
-        failwith "Not Implemented"
+        deleteUser user_name repo
     | "GET" -> // Get the workflow permissions of a user
-        match Map.tryFind user_name repo.users with
-        | None ->
-            repo, "User not found", 404
-        | Some(user) ->
-            repo, serialize_user_permissions user, 200
+        failwith "Not Implemented"
+//        match Map.tryFind user_name repo.users with
+//        | None ->
+//            repo, "User not found", 404
+//        | Some(user) ->
+//            repo, serialize_user_permissions user, 200
     | _ ->
         repo, "Unsupported user operation", 400
 
