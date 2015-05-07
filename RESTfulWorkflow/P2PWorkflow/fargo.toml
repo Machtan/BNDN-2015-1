@@ -1,6 +1,8 @@
-name = "Migrate"
-main = "Migrate"
-authors = ["Jakob Lautrup Nysom", "Patrick Evers Bjørkman", "Stinus Møhl Thomsen"]
+name = "Program"
+main = "Program"
+authors = [
+    "Jakob Lautrup Nysom", "Patrick Evers Bjørkman",
+    "Stinus Møhl Thomsen", "Aslak Vanggaard"]
 libraries = [
     "Newtonsoft.Json",
     "Pastry",
@@ -11,10 +13,14 @@ includes = [
 ]
 
 [targets] # Dependencies
-# Send = ["Repository_types"]
+Send = ["Repository_types", "Pastry"]
 Repository_types = ["Pastry"]
 Migrate = ["Repository_types"]
-# EventLogic = ["Repository_types"]
-# UserLogic = ["Repository_types"]
-# WorkflowLogic = ["Repository_types"]
-# RestAPI = ["Repository_types", "EventLogic", "WorkflowLogic", "UserLogic", "Pastry"]
+EventLogic = ["Repository_types", "Pastry", "Send"]
+UserLogic = ["Repository_types", "EventLogic", "Pastry"]
+WorkflowLogic = ["Repository_types", "Pastry"]
+RestAPI = [
+    "Repository_types", "EventLogic", "WorkflowLogic",
+    "UserLogic", "Pastry", "Migrate"
+]
+Program = ["RestAPI", "Pastry", "Newtonsoft.Json"]
