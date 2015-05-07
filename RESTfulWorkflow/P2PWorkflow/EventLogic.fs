@@ -45,7 +45,7 @@ let get_event (eventName : EventName) (repository : Repository) : Event =
         | None -> failwith "Missing Workflow"
 
 /// Creates and returns a new event from a name and a start state
-let create_event (eventName : EventName) (state : EventState) (repository : Repository) : Result =
+let create_event (eventName : EventName) (state : EventState) (lock : bool) (repository : Repository) : Result =
     let n = {
             name        = eventName;
             executed    = state.executed;
@@ -57,8 +57,7 @@ let create_event (eventName : EventName) (state : EventState) (repository : Repo
         }
     let workflow, name = eventName
 
-    //Det skal lige chekkes om workflow'et ekesitire
-    update_inner_map workflow (fun x -> MapOk(Map.add name (false, n) x)) repository
+    update_inner_map workflow (fun x -> MapOk(Map.add name (lock, n) x)) repository
 
 /// Return name and state of given event
 let get_event_state (eventName : EventName) (repository : Repository) : EventState =
