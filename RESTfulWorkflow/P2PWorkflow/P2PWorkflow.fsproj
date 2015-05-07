@@ -42,6 +42,10 @@
     <Reference Include="FSharp.Core, Version=$(TargetFSharpCoreVersion), Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
       <Private>True</Private>
     </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\packages\Newtonsoft.Json.6.0.8\lib\net45\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
@@ -57,12 +61,20 @@
     <None Include="App.config" />
     <Compile Include="WorkflowOld.fs" />
     <Compile Include="RestAPI.fsi" />
-    <Compile Include="Program.fs" />
     <Compile Include="PastryTypes.fs" />
     <Compile Include="WorkflowLogic.fs" />
     <Compile Include="UserLogic.fs" />
     <Compile Include="pastry.fs" />
     <Compile Include="RestAPI.fs" />
+    <Compile Include="Program.fs" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Pastry\Pastry.fsproj">
+      <Name>Pastry</Name>
+      <Project>{72f2645a-4a25-4939-a312-089575cd005f}</Project>
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>

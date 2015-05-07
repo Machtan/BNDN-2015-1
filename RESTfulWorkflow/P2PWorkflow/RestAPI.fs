@@ -237,18 +237,3 @@ let resource_handler (path: string) (meth: string) (message: string) (send_func:
             printfn "Invalid path gotten: %s" path
             initial_state, "Invalid path", 400
     response
-
-[<EntryPoint>]
-let main args =
-    match args with
-        | [|addr; port; peer|] ->
-            let address = sprintf "%s:%s" (if addr = "" then "localhost" else addr) port
-            printfn "? Joining pastry network at '%s'..." address
-            let known_peer = if peer = "" then None else Some(peer)
-
-            let node = start_server address known_peer resource_handler <| create_repository()
-            0
-            // Start listening...
-        | _ ->
-            printfn "Usage: Pastry.exe <address> <port> <peer_address_with_port>"
-            1

@@ -2,15 +2,6 @@
 
 open Repository_types
 
-type Message =
-| GetStatus                 of EventName                // workflow, event  (executed, included)
-| GetIfCondition            of EventName
-| Lock                      of EventName
-| Unlock                    of EventName
-| SetIncluded               of EventName * bool                // The target event becomes included
-| SetPending                of EventName * bool                // The target event becomes pending
-| GetUserRoles              of UserName
-
 /// Sends given message with the use of pastery.fs
 let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Repository) : ResourceResponse<Repository> =
     match message with
@@ -34,16 +25,26 @@ let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Rep
         sendFunc (sprintf "%s/%s/pending" workflow name) "PUT" (sprintf "%A" x) repository
     | GetUserRoles(userName)    ->
         failwith "not implemented yed"
+    | AddFromRelation(toEventName, relationTyp, fromEventName) ->
+        let thisWorkflow, thisEvent = fromEventName
+        let toWorkflow, toEvent = toEventName
+        sendFunc (sprintf "%s/%s/%A" thisWorkflow thisEvent relationTyp) "PUT" (sprintf "%s, %s" toWorkflow toEvent) repository
+    | RemoveFromRelation(toEventName, relationTyp, fromEventName) ->
+        let thisWorkflow, thisEvent = fromEventName
+        let toWorkflow, toEvent = toEventName
+        sendFunc (sprintf "%s/%s/%A" thisWorkflow thisEvent relationTyp) "DELETE" (sprintf "%s, %s" toWorkflow toEvent) repository
+    | RemoveToRelation(toEventName, relationTyp, fromEventName) ->
+        // Virker ikke ......
+        let thisWorkflow, thisEvent = fromEventName
+        let toWorkflow, toEvent = toEventName
+        sendFunc (sprintf "%s/%s/%A" thisWorkflow thisEvent relationTyp) "DELETE" (sprintf "%s, %s" toWorkflow toEvent) repository
 
 /// tests if a ResourceResponse is positive
 let check_if_positive (response : ResourceResponse<Repository>) : bool =
     let _, _, status = response
-    if status >= 200
-        then
-            if status < 300
-            then true
-            else false
-        else false
+    if status >= 200 && status < 300
+    then true
+    else false
 
 let check_if_positive_bool (response : ResourceResponse<Repository>) : bool =
     if check_if_positive response

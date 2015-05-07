@@ -26,8 +26,8 @@ type ResourceResponse<'a> = 'a * string * int
 type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
 
 // A function to handle resource requests
-// url, method, send_func, state -> response
-type ResourceRequestFunc<'a> = string -> string -> SendFunc<'a> -> 'a -> ResourceResponse<'a>
+// url, method, data, send_func, state -> response
+type ResourceRequestFunc<'a> = string -> string -> string -> SendFunc<'a> -> 'a -> ResourceResponse<'a>
 
 // A function to serialize the state passed through pastry
 type SerializeFunc<'a> = 'a -> string
@@ -361,7 +361,7 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
             match inter.send with
             | Some(func) -> func
             | None -> failwith "ASSERTION FAILED: No send func in interface at handle_message"
-        let (state', resp, status) = inter.handle path meth send_func inter.state
+        let (state', resp, status) = inter.handle path meth message send_func inter.state
         node, state', (resp, status)
 
     | DeadNode -> // Something has died

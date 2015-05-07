@@ -1,5 +1,7 @@
 ﻿module Repository_types
 
+open Pastry
+
 type UserName = string              // The name of a user
 type WorkflowName = string          // The name of a workflow
 type Roles = Set<string>           //A list of roles
@@ -70,14 +72,6 @@ type ResultEvent =
     | Error of string
     | LockConflict
 
-///-----Midlertidig---- 
-// Updated state, response, status code
-type ResourceResponse<'a> = 'a * string * int
-
-// A function for the resource request func to send requests through
-// partial_resource_url, method, data, state -> response
-type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
-
 type Result =
     | Ok of Repository
     | Unauthorized
@@ -87,3 +81,15 @@ type Result =
     | MissingWorkflow
     | LockConflict
     | Error of string
+
+type Message =
+    | GetStatus                 of EventName                // workflow, event  (executed, included)
+    | GetIfCondition            of EventName
+    | Lock                      of EventName
+    | Unlock                    of EventName
+    | SetIncluded               of EventName * bool                // The target event becomes included
+    | SetPending                of EventName * bool                // The target event becomes pending
+    | GetUserRoles              of UserName
+    | AddFromRelation           of EventName * RelationType * EventName
+    | RemoveFromRelation        of EventName * RelationType * EventName
+    | RemoveToRelation          of EventName * RelationType * EventName

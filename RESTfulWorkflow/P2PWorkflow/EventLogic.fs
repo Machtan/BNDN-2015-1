@@ -1,5 +1,6 @@
 ﻿module EventLogic
 
+open Pastry
 open Repository_types
 open Send
 
@@ -160,17 +161,12 @@ let add_event_roles (eventName : EventName) (roles : Roles) (repository : Reposi
 
 /// Adds given relationships (going from first given event) to given event and returns the result
 let add_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    //Dummy
-    printfn "Send: Add fromRelation (%A %A) to %A" fromEvent relations toEventName
-
-    let thisWorkflow, thisEvent = fromEvent
-    let toWorkflow, toEvent = toEventName
-    let _, _, status = sendFunc (sprintf "%s/%s/%A" thisWorkflow thisEvent relations) "GET" (sprintf "%s, %s" toWorkflow toEvent) repository
-    //test om svaret er rektigt
-
-    let inner (event : Event) : UpdateEventResult =
-        EventOk({event with toRelations = Set.add (relations, toEventName) event.toRelations})
-    update_inner_event fromEvent inner repository
+    if check_if_positive (send (AddFromRelation(toEventName, relations, fromEvent)) sendFunc repository)
+    then
+        let inner (event : Event) : UpdateEventResult =
+            EventOk({event with toRelations = Set.add (relations, toEventName) event.toRelations})
+        update_inner_event fromEvent inner repository
+    else LockConflict
 
 /// Adds given relationships (going to given event) to given event and returns the result
 let add_relation_from (toEvent : EventName) (relations : RelationType) (fromEventName : EventName) (repository : Repository) : Result =
@@ -208,14 +204,14 @@ let unluck_event (eventName : EventName) (repository : Repository) : Result =
 
 /// Removes given relation form given event and returns the result
 let remove_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    //Dummy
-    printfn "Send: remove fromRelation (%A %A) to %A" fromEvent relations toEventName
-
-    let inner (event : Event) : UpdateEventResult =
-        if Set.contains (relations, toEventName) event.toRelations
-        then EventOk({event with toRelations = Set.remove (relations, toEventName) event.toRelations})
-        else EventErr(MissingRelation)
-    update_inner_event fromEvent inner repository
+    if check_if_positive (send (RemoveFromRelation(toEventName, relations, fromEvent)) sendFunc repository)
+    then
+        let inner (event : Event) : UpdateEventResult =
+            if Set.contains (relations, toEventName) event.toRelations
+            then EventOk({event with toRelations = Set.remove (relations, toEventName) event.toRelations})
+            else EventErr(MissingRelation)
+        update_inner_event fromEvent inner repository
+    else LockConflict
 
 /// Removes given relation form given event and returns the result
 let remove_relation_from (toEvent : EventName) (relations : RelationType) (fromEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
@@ -231,23 +227,24 @@ let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>) (repo
     let workflow, eName = eventName
     let event = get_event eventName repository
     printfn "Send: remove event: %s from wrokflow: %s" eName workflow
-    Set.forall (fun x -> 
+    if Set.forall (fun x ->
         let typ, event' = x
-        printfn "Send: Remove fromRelation (%A,%A) to event: %A" typ eventName event'
-        true ) event.toRelations
-    Set.forall (fun x ->
-        let typ, event' = x
-        printfn "Send: Remove toRelation (%A,%A) to event: %A" typ eventName event'
-        true ) event.fromRelations
+        check_if_positive (send (RemoveToRelation(eventName, typ, event')) sendFunc repository)) event.toRelations
+    then
+        if Set.forall (fun x ->
+            let typ, event' = x
+            check_if_positive (send (RemoveFromRelation(eventName, typ, event')) sendFunc repository)) event.fromRelations
+        then
+            let workflow, name = eventName
+            let inner (x : Map<string, bool*Event>) : UpdateMapResult = 
+                match Map.tryFind name x with
+                    | Some(_) ->
+                        MapOk(Map.remove name x)
+                    | None -> MapErr(MissingEvent)
 
-    let workflow, name = eventName
-    let inner (x : Map<string, bool*Event>) : UpdateMapResult = 
-        match Map.tryFind name x with
-            | Some(_) ->
-                MapOk(Map.remove name x)
-            | None -> MapErr(MissingEvent)
-
-    update_inner_map workflow inner repository
+            update_inner_map workflow inner repository
+        else LockConflict
+    else LockConflict
 
 /// Removes given roles form given event and returns the result
 let remove_event_roles (eventName : EventName) (roles : Roles) (repository : Repository) : Result =
