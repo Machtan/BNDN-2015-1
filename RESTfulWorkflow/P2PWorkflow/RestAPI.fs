@@ -218,7 +218,7 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         | "GET", "included" ->
             getIncluded event_name workflow_name repo
         | "GET", "executable" ->
-            getExecutable event_name workflow_name repo
+            getExecutable event_name workflow_name repo sendFunc
         | "POST", relation ->
             addRelation workflow_name event_name relation repo sendFunc
         | _ ->
