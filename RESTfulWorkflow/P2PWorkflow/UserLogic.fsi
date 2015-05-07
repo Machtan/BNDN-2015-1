@@ -1,5 +1,6 @@
 ﻿module UserLogic
 
+open Pastry
 open Repository_types
 
 //Create
@@ -9,8 +10,6 @@ val create_user:                UserName -> Repository -> ResultUser
 
 //Read
 
-/// Metodes used when finding all executabel event for a user 
-val find_executable_events:     UserName -> Repository -> Executable
 /// Return name and state of given event
 val get_user_roles:             UserName -> WorkflowName -> Repository -> Roles
 

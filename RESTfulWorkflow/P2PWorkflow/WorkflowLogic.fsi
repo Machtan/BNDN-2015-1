@@ -1,5 +1,6 @@
 module WorkflowLogic
 
+open Pastry
 open Repository_types
 
 //Create
@@ -13,6 +14,8 @@ val create_workflow:            WorkflowName -> Repository -> Result
 //val find_executable_with_roles: WorkflowName -> Roles -> SendFunc<Repository> -> Repository -> ExecutableInWorkflow
 /// Check if given workflow exsist
 val check_workflow:             WorkflowName -> Repository -> bool
+/// Gets all events in given workflow
+val get_workflow_events:        WorkflowName -> Repository -> string list
 
 //Update
 
@@ -22,7 +25,7 @@ val add_event:                  WorkflowName -> EventName -> Repository -> Resul
 //Delete
 
 /// Deletes given workflow and returns it if its susesful
-val delete_workflow:            WorkflowName -> SendFunc<Repository> -> Repository -> Result
+val delete_workflow:            WorkflowName -> Repository -> Result
 /// Removes given event form given workflow and returns the result
-val remove_event:               WorkflowName -> EventName -> SendFunc<Repository> -> Repository -> Result
+val remove_event:               WorkflowName -> EventName -> Repository -> Result
 

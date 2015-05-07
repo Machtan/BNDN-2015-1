@@ -25,6 +25,10 @@ type PastryInterface<'a> = {
     state: 'a;
 }
 
+// Returns whether the given resource belongs on this pastry node or another
+// self_guid resource other_guid
+val belongs_on_other: string -> string -> string -> bool
+
 // Creates a local node and makes it join the Pastry network
 // Whenever a request for a resource enters, the resource request func is called
 // Thes send func is for the resource handler to request other resources with

@@ -1,5 +1,6 @@
 ﻿module WorkflowLogic
 
+open Pastry
 open Repository_types
 
 //Create
@@ -18,6 +19,12 @@ let check_workflow (wfName : WorkflowName) (repos : Repository) : bool =
 //let find_executable_with_roles (workflow : Workflow) (roles : Roles) (magic : SendFunc<'a>) (repos : Repository) : ExecutableInWorkflow =
 //    failwith "Not implemented yed."
 
+/// Gets all events in given workflow
+let get_workflow_events (wfName : WorkflowName) (repos : Repository) : string list =
+    match Map.tryFind wfName repos.workflows with
+    | Some(x)   -> x
+    | None      -> failwith "Workflow Does not exist"
+
 //Update
 
 /// Adds a given event to a given Workflow and returns the result
@@ -33,7 +40,7 @@ let add_event (wfName : WorkflowName) (event : EventName) (repos : Repository) :
 //Delete
 
 /// Removes given event form given workflow and returns the result
-let remove_event (wfName : WorkflowName) (event : EventName) (magic : SendFunc<Repository>) (repos : Repository) : Result =
+let remove_event (wfName : WorkflowName) (event : EventName) (repos : Repository) : Result =
     let workflowName, event = event
     let events = 
         match repos.workflows.TryFind(wfName) with
@@ -47,7 +54,7 @@ let remove_event (wfName : WorkflowName) (event : EventName) (magic : SendFunc<R
     Result.Ok({repos with workflows = Map.add wfName (remove_first events event) repos.workflows})
 
 /// Deletes given workflow and returns it if its susesful
-let delete_workflow (wfName : WorkflowName) (magic : SendFunc<Repository>) (repos : Repository) : Result =
+let delete_workflow (wfName : WorkflowName) (repos : Repository) : Result =
     let events = 
         match repos.workflows.TryFind(wfName) with
         | Some(v) -> v
@@ -55,7 +62,7 @@ let delete_workflow (wfName : WorkflowName) (magic : SendFunc<Repository>) (repo
     let rec deleteEvents events=
         match events with
         | h::events ->
-            match remove_event wfName h magic repos with  
+            match remove_event wfName h repos with  
             |Result.Ok(x) -> 
                 deleteEvents events
             | _ -> []
