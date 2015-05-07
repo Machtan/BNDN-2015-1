@@ -48,7 +48,7 @@ let getPending event workflowName repo : ResourceResponse<Repository> =
     match (eventState) with
         | Some(evState) -> (repo,(string)evState.pending, statusCode)
         | None ->  (repo,"Event could not be received.", statusCode)
-
+        
 // Attempts to execute the given event
 let setExecuted workflowName eventName userName repo sendFunc :ResourceResponse<Repository>  =
     let event = (workflowName,eventName): EventName
@@ -84,7 +84,7 @@ let createEvent eventName workflowName attribute (repository : Repository) : Res
     else        
         let initialState = {included = (str.[0] = '1'); pending = (str.[1] = '1'); executed = (str.[2] = '1')} : EventState
         let event = (workflowName,eventName): EventName
-        let response = create_event event initialState repository
+        let response = create_event event initialState false repository
         match (response) with
             | Result.Ok(r) -> (r,"Created.", 201)
             | Result.Unauthorized -> (repository,"Unauthorized", 401)
@@ -284,6 +284,7 @@ let KonoTestoKawaii =
         logs = [];
     }
 
-    let resp = handle_event "Hospital" "Enter" "executed" "PUT" "Bob"  test_repository (fun a b c d ->  (test_repository,"Medic,Patient,Janitor", 200))
-    let resp2 = handle_event "Hospital" "Enter" "executed" "GET" "Bob"  test_repository (fun a b c d ->  (test_repository, "Medic,Patient,Janitor", 200))
+    let resp = handle_user "Bob" "DELETE" test_repository
+    let (repo,message,status) = resp
+    let resp2 = handle_event "Hospital" "Enter" "excluded" "GET" "Bob"  repo (fun a b c d ->  (repo, "Medic,Patient,Janitor", 200))
     0

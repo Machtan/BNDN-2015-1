@@ -141,7 +141,7 @@ let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<R
                         else (false, acc)
                     else s
 
-                let status, unlockSet = Set.foldBack inner lockSet (false, Set.empty)
+                let status, unlockSet = Set.foldBack inner lockSet (true, Set.empty)
                 if status
                 then true
                 else
