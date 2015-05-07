@@ -19,7 +19,7 @@ type SerializeFunc<'a> = 'a -> string
 // A record containing the types needed to interface properly with the pastry
 // network
 type PastryInterface<'a> = {
-    send: SendFunc<'a> option;
+    send: SendFunc<'a>;
     handle: ResourceRequestFunc<'a>;
     serialize: SerializeFunc<'a>;
     state: 'a;

@@ -35,7 +35,7 @@ type SerializeFunc<'a> = 'a -> string
 // A record containing the types needed to inter properly with the pastry
 // network
 type PastryInterface<'a> = {
-    send: SendFunc<'a> option;
+    send: SendFunc<'a>;
     handle: ResourceRequestFunc<'a>;
     serialize: SerializeFunc<'a>;
     state: 'a;
@@ -265,11 +265,7 @@ let handle_join (node: Node) (message: string): Node =
 // Handles that the node closest to this on the 'bigger' side has died
 let migrate_dead_leaf<'a> (node: Node) (neighbor: GUID)
         (inter: PastryInterface<'a>) : 'a =
-    let sender =
-        match inter.send with
-        | None -> failwith "No send func in 'migrate_dead_leaf'!"
-        | Some(s) -> s
-    let (state', resp, status) = inter.handle "migrate" "PUT" node.backup sender inter.state
+    let (state', resp, status) = inter.handle "migrate" "PUT" node.backup inter.send inter.state
     state'
 
 // Finds the GUID of the neighbor that this node watches over
@@ -359,11 +355,7 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
 
     | Resource(path, meth) -> // Request for a resource here
         printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
-        let send_func =
-            match inter.send with
-            | Some(func) -> func
-            | None -> failwith "ASSERTION FAILED: No send func in interface at handle_message"
-        let (state', resp, status) = inter.handle path meth message send_func inter.state
+        let (state', resp, status) = inter.handle path meth message inter.send inter.state
         node, state', (resp, status)
 
     | DeadNode -> // Something has died
@@ -510,6 +502,20 @@ let try_forward_pastry<'a> (node: Node) (cmd_str: string) (dst_str: string)
         let error_message = sprintf "Invalid GUID received: '%s'" dst_str
         Invalid(error_message, 404, "Not found")
 
+// Creates a send func !
+let create_send_func<'a> (node: Node) (inter: PastryInterface<'a>): SendFunc<'a>=
+    let rec send_func (resource_path: string) (meth: string) (data: string) (state: 'a): ResourceResponse<'a> =
+        match get_destination (split resource_path '/') with
+        | Ok(guid) ->
+            let (node', state', (resp, status)) =
+                route node (Resource(resource_path, meth)) data guid { inter with send = send_func; }
+            (state', resp, status)
+
+        | Error(resp, status, reason) ->
+            error <| sprintf "Could not send '%s' message from repo to '%s'" meth resource_path
+            (state, resp, status)
+    send_func
+
 // Attempts to forward some given url parts
 let try_forward_resource<'a> (node: Node) (split_res_path: string list)
         (meth: string) (data: string) (response: HttpListenerResponse)
@@ -517,19 +523,8 @@ let try_forward_resource<'a> (node: Node) (split_res_path: string list)
     match get_destination split_res_path with
     | Ok(guid) ->
         // Construct the message function used by the repo to route messages out
-        let rec send_func (resource_path: string) (meth: string) (data: string) (state: 'a): ResourceResponse<'a> =
-            match get_destination (split resource_path '/') with
-            | Ok(guid) ->
-                let (node', state', (resp, status)) =
-                    route node (Resource(resource_path, meth)) data guid { inter with send = Some(send_func); }
-                (state', resp, status)
-
-            | Error(resp, status, reason) ->
-                error <| sprintf "Could not send '%s' message from repo to '%s'" meth resource_path
-                (state, resp, status)
-
         let resource_url = String.concat "/" split_res_path
-        let (node', state', (message, status)) = route node (Resource(resource_url, meth)) data guid { inter with send = Some(send_func); }
+        let (node', state', (message, status)) = route node (Resource(resource_url, meth)) data guid inter
         reply response message status "Ok"
         Valid(node', state')
     | Error(msg, status, reason) ->
@@ -567,8 +562,12 @@ let start_listening<'a when 'a: equality> (node: Node) (inter_arg: PastryInterfa
     listener.Start ()
 
     // Listen for a a message
-    let rec listen (node: Node) (inter: PastryInterface<'a>) =
+    let rec listen (node: Node) (old_inter: PastryInterface<'a>) =
         printfn "> Waiting..."
+
+        // Update the send function!
+        let inter = { old_inter with send = create_send_func node old_inter; }
+
         let cxt      = listener.GetContext()
         let request  = cxt.Request
         let response = cxt.Response
@@ -660,8 +659,11 @@ let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (pe
         routing_table = [];
         backup = "";
     }
+    let dummy_sender path meth data state =
+        failwith "ASSERTION FAILED: Dummy send func not replaced before use!"
+
     let inter: PastryInterface<'a> = { // Create the inter parts
-        send = None;
+        send = dummy_sender;
         handle = handler;
         serialize = serializer;
         state = state;
