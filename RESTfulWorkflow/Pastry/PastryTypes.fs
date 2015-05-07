@@ -19,10 +19,10 @@ type MessageType =
 // Request a resource somewhere to be routed back using the context
 | Resource of string * string
 // Add more persistency commands here
-| Backup    // This is the backup state of a watched node
-| Ping      // You alive, mate?
-| GetState  // Hey, I need something you have (such as a new leaf)
-| DeadNode  // Someone has died. Find the one who can fix it
+| Backup        // This is the backup state of a watched node
+| Ping          // You alive, mate?
+| GetState      // Hey, I need something you have (such as a new leaf)
+| DeadNode      // Someone has died. Find the one who can fix it
 
 // The state record of a Pastry node
 type Node = {
