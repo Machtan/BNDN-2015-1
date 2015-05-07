@@ -1,5 +1,6 @@
 ﻿module Send
 
+open Pastry
 open Repository_types
 
 /// Sends given message with the use of pastery.fs
