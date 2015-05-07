@@ -190,7 +190,6 @@ let get_destination (resource_url: string list): Destination =
     let path = String.concat "/" resource_url
     match resource_url with
     | "user"::name::[] ->
-        let path = "user/name"
         Ok(hash (sprintf "user/%s" name))
     | "user"::name::unwanted_stuff ->
         let error_message = sprintf "Bad user path '%s'. It should be on the form 'user/<username>'" path

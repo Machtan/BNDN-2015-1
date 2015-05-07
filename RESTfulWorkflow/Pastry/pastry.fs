@@ -264,7 +264,7 @@ let handle_join (node: Node) (message: string): Node =
 
 // Handles that the node closest to this on the 'bigger' side has died
 let migrate_dead_leaf<'a> (node: Node) (neighbor: GUID)
-        (inter: PastryInterface<'a>) =
+        (route_func: RouteFunc<'a>) (inter: PastryInterface<'a>) : <'a> =
     printfn "%s" <| String.replicate 50 "="
     printfn "NOT IMPLEMENTED: Migrating dead neighbor's state..."
     printfn "%s" <| String.replicate 50 "="
@@ -628,6 +628,18 @@ let start_listening<'a when 'a: equality> (node: Node) (inter_arg: PastryInterfa
     // Start listening
     ignore <| listen node inter_arg
 
+// Returns whether the given resource belongs on this pastry node or another
+let belongs_on_other (self_guid: string) (resource: string) (other_guid: string) : bool =
+    let (self, other) =
+        match deserialize_guid self_guid, deserialize_guid other_guid with
+        | Some(a), Some(b) -> a, b
+        | _ -> failwith (sprintf "Invalid guids given: %s %s" self_guid other_guid)
+    let path = split resource '/'
+    match get_destination path with
+    | Ok(guid) ->
+        distance self guid < distance other guid
+    | Error(_) ->
+        failwith "Bad resource url: '%s'" resource
 
 // "Actually" starts the server. Used by the interface functions
 let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (peer: NetworkLocation option)
