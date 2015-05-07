@@ -13,9 +13,9 @@ let main args =
         printfn "Peer: %A" known_peer
         // url, method, send_func, state -> state, response
         // Yay!
-        let dummy_handler path meth send_func (state: 'a) : ResourceResponse<'a> =
+        let dummy_handler path meth data send_func (state: 'a) : ResourceResponse<'a> =
             printfn "%s" <| String.replicate 50 "="
-            printfn "REPOSITORY: Dummy handler is handling '%s' '%s'" meth path
+            printfn "REPOSITORY: Dummy handler is handling '%s' '%s' '%s'" meth path data
             printfn "%s" <| String.replicate 50 "="
             state, "Hello World", 200
 
