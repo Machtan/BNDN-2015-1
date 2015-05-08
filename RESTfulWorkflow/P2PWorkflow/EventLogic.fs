@@ -9,12 +9,13 @@ type UpdateMapResult =
 | MapErr of Result
 
 let update_inner_map (workflow : WorkflowName) (func : Map<string, bool*Event> -> UpdateMapResult) (repository : Repository) : Result =
-    match Map.tryFind workflow repository.events with
-    | Some(innerMap)   ->
-        match func innerMap with
-        | MapOk(newMap) -> Ok({repository with events = Map.add workflow newMap repository.events})
-        | MapErr(errer) -> errer
-    | None      -> MissingWorkflow
+    let inner_map =
+        match Map.tryFind workflow repository.events with
+        | Some(map) -> map
+        | None -> Map.empty
+    match func inner_map with
+    | MapOk(newMap) -> Ok({repository with events = Map.add workflow newMap repository.events})
+    | MapErr(error) -> error
 
 type UpdateEventResult =
 | EventOk of Event
@@ -22,7 +23,7 @@ type UpdateEventResult =
 
 let update_inner_event (eventName : EventName) (func : Event -> UpdateEventResult) (repository : Repository) : Result =
     let workflow, name = eventName
-    let inner (eventMap : Map<string, bool*Event>) : UpdateMapResult = 
+    let inner (eventMap : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name eventMap with
             | Some(lockEvent)  ->
                 let lock, event = lockEvent
@@ -36,7 +37,7 @@ let update_inner_event (eventName : EventName) (func : Event -> UpdateEventResul
 let get_event (eventName : EventName) (repository : Repository) : Event =
     let workflow, name = eventName
     match repository.events.TryFind workflow with
-        | Some(x) -> 
+        | Some(x) ->
             match x.TryFind name with
             | Some(x) ->
                 let _, event = x
@@ -56,6 +57,9 @@ let create_event (eventName : EventName) (state : EventState) (lock : bool) (rep
             roles       = Set.empty;
         }
     let workflow, name = eventName
+
+    // TODO Maybe check whether the workflow exists somewhere
+    // before adding events
 
     update_inner_map workflow (fun x -> MapOk(Map.add name (lock, n) x)) repository
 
@@ -79,7 +83,7 @@ let check_if_executeble (eventName : EventName) (sendFunc : SendFunc<Repository>
     let onlyConditions x =
         let typ, _ = x
         typ = Condition
-        
+
     let checkConditions x =
         let typ, fromEventName = x
         let fromWorkflow, fromName = fromEventName
@@ -158,7 +162,7 @@ let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<R
                         let typ, event = x
                         match typ with
                         | Condition -> y
-                        | Exclusion -> 
+                        | Exclusion ->
                             let RR = send (SetIncluded(event, false)) sendFunc repo
                             if check_if_positive RR
                             then
@@ -171,7 +175,7 @@ let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<R
                             then
                                 let newRepository, _, _ = RR
                                 (true, newRepository)
-                            else (false, repo)                        
+                            else (false, repo)
                         | Inclusion ->
                             let RR = send (SetIncluded(event, true)) sendFunc repo
                             if check_if_positive RR
@@ -194,7 +198,7 @@ let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<R
             else LockConflict
         else Unauthorized
     else NotExecutable
-    
+
 /// Adds given roles to given event and returns the result
 let add_event_roles (eventName : EventName) (roles : Roles) (repository : Repository) : Result =
     let inner (event : Event) : UpdateEventResult =
@@ -235,7 +239,7 @@ let set_executed (eventName : EventName) (newState : bool) (repository : Reposit
 /// luck given event
 let luck_event (eventName : EventName) (repository : Repository) : Result =
     let workflow, name = eventName
-    let inner (x : Map<string, bool*Event>) : UpdateMapResult = 
+    let inner (x : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name x with
             | Some(x') ->
                 let lock, event = x'
@@ -249,7 +253,7 @@ let luck_event (eventName : EventName) (repository : Repository) : Result =
 /// unluck given event
 let unluck_event (eventName : EventName) (repository : Repository) : Result =
     let workflow, name = eventName
-    let inner (x : Map<string, bool*Event>) : UpdateMapResult = 
+    let inner (x : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name x with
             | Some(x') ->
                 let lock, event = x'
@@ -294,7 +298,7 @@ let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>) (repo
             check_if_positive (send (RemoveFromRelation(eventName, typ, event')) sendFunc repository)) event.fromRelations
         then
             let workflow, name = eventName
-            let inner (x : Map<string, bool*Event>) : UpdateMapResult = 
+            let inner (x : Map<string, bool*Event>) : UpdateMapResult =
                 match Map.tryFind name x with
                     | Some(_) ->
                         MapOk(Map.remove name x)

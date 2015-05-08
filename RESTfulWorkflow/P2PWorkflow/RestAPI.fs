@@ -106,80 +106,91 @@ let createEvent (eventName: string) (workflowName: string) (message: string)
             | Result.Error(s) -> (repository,s, 400)
 
 // Adds a new relation
-let addRelation workflowName eventName attribute repo sendFunc : ResourceResponse<Repository>=
-    let args = split attribute ' '
-    let url = List.head args
-    let eventTo = (workflowName,List.head (List.tail args))
-
-    let urlParts = split url '/'
-    let typ = Seq.last urlParts
+let addRelation (workflow: string) (event: string) (reltype: string)
+        (connection: string) (target: string*string) (repo: Repository)
+        (send_func: SendFunc<Repository>) : ResourceResponse<Repository>=
     let rel =
-        match typ with
+        match reltype with
         | "exclusion"   -> Some(Exclusion)
         | "condition"   -> Some(Condition)
         | "response"    -> Some(Response)
         | "inclusion"   -> Some(Inclusion)
         | _             -> None
     match (rel) with
-        | Some(r) ->
-                        let eventFrom = (workflowName,eventName): EventName
-                        let response = add_relation_to eventFrom r eventTo sendFunc repo
-                        match (response) with
-                            | Result.Ok(r) -> (r,"Created.", 201)
-                            | Result.Unauthorized -> (repo,"Unauthorized", 401)
-                            | Result.NotExecutable -> (repo,"The event is not executable.", 400)
-                            | Result.MissingRelation -> (repo,"The relation is missing.", 400)
-                            | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
-                            | Result.Error(s) -> (repo,s, 400)
-                            | Result.MissingEvent -> (repo,"Event is missing", 400)
-                            | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
-        | None -> (repo,"Invalid relation type", 400)
+    | Some(relation) ->
+            let event_name: EventName = (workflow, event)
+            let try_resp =
+                match connection with
+                | "to"      ->
+                    Some(add_relation_to event_name relation target send_func repo)
+                | "from"    ->
+                    Some(add_relation_from event_name relation target repo)
+                | _         ->
+                    None
+
+            match try_resp with
+            | Some(response) ->
+                match (response) with
+                | Result.Ok(repo')          -> (repo', "Created.", 201)
+                | Result.Unauthorized       -> (repo, "Unauthorized", 401)
+                | Result.NotExecutable      -> (repo, "The event is not executable.", 400)
+                | Result.MissingRelation    -> (repo, "The relation is missing.", 400)
+                | Result.LockConflict       -> (repo, "Encountered LockConflict.", 400)
+                | Result.Error(error)       -> (repo, error, 400)
+                | Result.MissingEvent       -> (repo, "Event is missing", 400)
+                | Result.MissingWorkflow    -> (repo, "Workflow is missing", 400)
+            | None ->
+                let msg = sprintf "Invalid connection '%s' should be 'to' or 'from'" connection
+                (repo, msg, 400)
+
+    | None ->
+        (repo,"Invalid relation type", 400)
 
 let createWorkflow workflowName repo  : ResourceResponse<Repository> =
-        let response = create_workflow workflowName repo
-        match (response) with
-            | Result.Ok(r) -> (r,"Created.", 201)
-            | Result.Unauthorized -> (repo,"Unauthorized", 401)
-            | Result.NotExecutable -> (repo,"The event is not executable.", 400)
-            | Result.MissingRelation -> (repo,"The relation is missing.", 400)
-            | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
-            | Result.MissingEvent -> (repo,"Event is missing", 400)
-            | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
-            | Result.Error(s) -> (repo,s, 400)
+    let response = create_workflow workflowName repo
+    match (response) with
+    | Result.Ok(r) -> (r,"Created.", 201)
+    | Result.Unauthorized -> (repo,"Unauthorized", 401)
+    | Result.NotExecutable -> (repo,"The event is not executable.", 400)
+    | Result.MissingRelation -> (repo,"The relation is missing.", 400)
+    | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
+    | Result.MissingEvent -> (repo,"Event is missing", 400)
+    | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
+    | Result.Error(s) -> (repo,s, 400)
 
 let deleteWorkflow workflowName repo  : ResourceResponse<Repository> =
-        let response = delete_workflow workflowName repo
-        match (response) with
-            | Result.Ok(r) -> (r,"Created.", 201)
-            | Result.Unauthorized -> (repo,"Unauthorized", 401)
-            | Result.NotExecutable -> (repo,"The event is not executable.", 400)
-            | Result.MissingRelation -> (repo,"The relation is missing.", 400)
-            | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
-            | Result.MissingEvent -> (repo,"Event is missing", 400)
-            | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
-            | Result.Error(s) -> (repo,s, 400)
+    let response = delete_workflow workflowName repo
+    match (response) with
+    | Result.Ok(r) -> (r,"Created.", 201)
+    | Result.Unauthorized -> (repo,"Unauthorized", 401)
+    | Result.NotExecutable -> (repo,"The event is not executable.", 400)
+    | Result.MissingRelation -> (repo,"The relation is missing.", 400)
+    | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
+    | Result.MissingEvent -> (repo,"Event is missing", 400)
+    | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
+    | Result.Error(s) -> (repo,s, 400)
 
 
 let createUser userName repo  : ResourceResponse<Repository> =
-        let response = create_user userName repo
-        match (response) with
-            | ResultUser.Ok(r) -> (r,"Created.", 201)
-            | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
-            | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
-            | ResultUser.MissingUser -> (repo,"user is missing", 400)
+    let response = create_user userName repo
+    match (response) with
+    | ResultUser.Ok(r) -> (r,"Created.", 201)
+    | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
+    | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
+    | ResultUser.MissingUser -> (repo,"user is missing", 400)
 
 let deleteUser userName repo  : ResourceResponse<Repository> =
-        let response = delete_user userName repo
-        match (response) with
-            | ResultUser.Ok(w) -> (repo,"Deleted.", 200)
-            | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
-            | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
-            | ResultUser.MissingUser -> (repo,"The relation is missing.", 400)
+    let response = delete_user userName repo
+    match (response) with
+    | ResultUser.Ok(w) -> (repo,"Deleted.", 200)
+    | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
+    | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
+    | ResultUser.MissingUser -> (repo,"The relation is missing.", 400)
 
 
 let getWorkFlowEvents workflow repo  : ResourceResponse<Repository> =
-        let response = get_workflow_events workflow repo
-        (repo,String.concat "," response, 200)
+    let response = get_workflow_events workflow repo
+    (repo,String.concat "," response, 200)
 
 // Creates a new repository
 let create_repository () : Repository =
@@ -205,9 +216,6 @@ let handle_user (user_name: string) (meth: string) (repo: Repository) : Resource
     | _ ->
         repo, "Unsupported user operation", 400
 
-// So amazing
-let SEPARATOR = "\n"
-
 // Handles requests for the givien workflow (getting the events in it)
 let handle_workflow (wf: string) (meth: string) (repo: Repository) : ResourceResponse<Repository> =
     match meth with
@@ -222,7 +230,8 @@ let handle_workflow (wf: string) (meth: string) (repo: Repository) : ResourceRes
 
 // Matches the given event and tries to handle the request
 let handle_event (workflow_name: string) (event_name: string) (attribute: string)
-        (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>) : ResourceResponse<Repository> =
+        (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>)
+        : ResourceResponse<Repository> =
     // Find the event in this repository if it exists
     match meth, attribute with
     | "POST", "" ->
@@ -239,10 +248,22 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         getIncluded event_name workflow_name repo
     | "GET", "executable" ->
         getExecutable event_name workflow_name repo sendFunc
-    | "POST", relation ->
-        addRelation workflow_name event_name relation repo sendFunc
     | _ ->
-        failwith "Not Implemented"//"Unsupported operation", 404, "Not found", initialState
+        (repo, "Unknown event command gotten!", 400)
+
+let handle_relation (workflow_name: string) (event_name: string) (relation: string)
+        (connection: string) (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>)
+        : ResourceResponse<Repository> =
+        if meth = "POST" then
+            let args = split message ' '
+            if not ((List.length args) = 2) then
+                let msg = sprintf "Invalid arguments: %A should be on the from <workflow>,<event>" message
+                (repo, msg, 400)
+            else
+                let target = (args.[0], args.[1])
+                addRelation workflow_name event_name relation connection target repo sendFunc
+        else
+            (repo, "Invalid method for adding a relation", 400)
 
 // Handles a full migration (a node has died, and is being remade)
 let handle_full_migration (meth: string) (data: string)
@@ -305,6 +326,9 @@ let handle_resource (path: string) (meth: string) (message: string) (send_func: 
 
         | "workflow"::workflow::event::attribute::[] ->
             handle_event workflow event attribute meth message initial_state send_func
+
+        | "workflow"::workflow::event::relation::connection::[] ->
+            handle_relation workflow event relation connection meth message initial_state send_func
 
         | "migrate"::[] ->
             handle_full_migration meth message send_func initial_state
