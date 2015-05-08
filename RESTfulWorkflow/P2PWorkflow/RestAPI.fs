@@ -231,19 +231,22 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
 let handle_full_migration (meth: string) (data: string)
         (send_func: SendFunc<Repository>) (initial_state: Repository)
         : ResourceResponse<Repository> =
-    match meth with
-    | "PUT" ->
-        printfn ">>> Migrating........"
-        let dead_repo = JsonConvert.DeserializeObject<Repository> data
-        let cmds = get_all_migration_commands dead_repo
-        let migrate cmd state =
-            let (new_state, resp, status) = send_func cmd.path cmd.meth cmd.data state
-            new_state
-        let updated_state = List.foldBack migrate cmds initial_state
-        printfn ">>> Finished migrating!"
-        (updated_state, "Migrated!", 200)
-    | _ ->
-        (initial_state, "Bad method used: migrate requires PUT!", 400)
+    if data = "" then
+        (initial_state, "Nothing to migrate", 200)
+    else
+        match meth with
+        | "PUT" ->
+            printfn ">>> Migrating........"
+            let dead_repo = JsonConvert.DeserializeObject<Repository> data
+            let cmds = get_all_migration_commands dead_repo
+            let migrate cmd state =
+                let (new_state, resp, status) = send_func cmd.path cmd.meth cmd.data state
+                new_state
+            let updated_state = List.foldBack migrate cmds initial_state
+            printfn ">>> Finished migrating!"
+            (updated_state, "Migrated!", 200)
+        | _ ->
+            (initial_state, "Bad method used: migrate requires PUT!", 400)
 
 // Handles the migration of resources on this repository that are closer to
 // a newly-joined node
