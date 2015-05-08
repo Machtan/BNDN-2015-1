@@ -59,6 +59,8 @@ let setExecuted workflowName eventName userName repo sendFunc :ResourceResponse<
             | Result.NotExecutable -> (repo,"The event is not executable.", 400)
             | Result.MissingRelation -> (repo,"The relation is missing.", 400)
             | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
+            | Result.MissingEvent -> (repo,"Event is missing", 400)
+            | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
             | Result.Error(s) -> (repo,s, 400)
 
 // Attempts to create a new event
@@ -71,6 +73,8 @@ let deleteEvent eventName workflowName (repository : Repository) sendFunc : Reso
             | Result.NotExecutable -> (repository,"The event is not executable.", 400)
             | Result.MissingRelation -> (repository,"The relation is missing.", 400)
             | Result.LockConflict -> (repository,"Encountered LockConflict.", 400)
+            | Result.MissingEvent -> (repository,"Event is missing", 400)
+            | Result.MissingWorkflow -> (repository,"Workflow is missing", 400)
             | Result.Error(s) -> (repository,s, 400)
 
 let createEvent eventName workflowName attribute (repository : Repository) : ResourceResponse<Repository> =
@@ -91,6 +95,8 @@ let createEvent eventName workflowName attribute (repository : Repository) : Res
             | Result.NotExecutable -> (repository,"The event is not executable.", 400)
             | Result.MissingRelation -> (repository,"The relation is missing.", 400)
             | Result.LockConflict -> (repository,"Encountered LockConflict.", 400)
+            | Result.MissingEvent -> (repository,"Event is missing", 400)
+            | Result.MissingWorkflow -> (repository,"Workflow is missing", 400)
             | Result.Error(s) -> (repository,s, 400)
 
 // Adds a new relation
@@ -119,6 +125,8 @@ let addRelation workflowName eventName attribute repo sendFunc : ResourceRespons
                             | Result.MissingRelation -> (repo,"The relation is missing.", 400)
                             | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
                             | Result.Error(s) -> (repo,s, 400)
+                            | Result.MissingEvent -> (repo,"Event is missing", 400)
+                            | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
         | None -> (repo,"Invalid relation type", 400)
     
 let createWorkflow workflowName repo  : ResourceResponse<Repository> =
@@ -127,15 +135,23 @@ let createWorkflow workflowName repo  : ResourceResponse<Repository> =
             | Result.Ok(r) -> (r,"Created.", 201)
             | Result.Unauthorized -> (repo,"Unauthorized", 401)
             | Result.NotExecutable -> (repo,"The event is not executable.", 400)
+            | Result.MissingRelation -> (repo,"The relation is missing.", 400)
+            | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
+            | Result.MissingEvent -> (repo,"Event is missing", 400)
             | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
+            | Result.Error(s) -> (repo,s, 400)
             
 let deleteWorkflow workflowName repo  : ResourceResponse<Repository> =
         let response = delete_workflow workflowName repo
         match (response) with
-            | Result.Ok(r) -> (r,"Deleted.", 200)
+            | Result.Ok(r) -> (r,"Created.", 201)
             | Result.Unauthorized -> (repo,"Unauthorized", 401)
             | Result.NotExecutable -> (repo,"The event is not executable.", 400)
+            | Result.MissingRelation -> (repo,"The relation is missing.", 400)
+            | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
+            | Result.MissingEvent -> (repo,"Event is missing", 400)
             | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
+            | Result.Error(s) -> (repo,s, 400)
 
 
 let createUser userName repo  : ResourceResponse<Repository> =
