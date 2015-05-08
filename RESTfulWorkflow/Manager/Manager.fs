@@ -67,7 +67,13 @@ let parse (line : string) roles useroles (workflow: string) : string list * stri
             then
                 let data = sprintf "%s,%s" flags (String.concat "," eventroles)
                 upload query "POST" data
-        else upload query "POST" flags
+        else
+            upload query "POST" flags
+            
+        let add_query = Workflow(workflow, "")
+        System.Threading.Thread.Sleep(10)
+        upload add_query "PUT" name
+
         roles, workflow
     | "rel"::event::typ::to_event::[] ->
         let query = Workflow(workflow, sprintf "%s/%s/to" event typ)
