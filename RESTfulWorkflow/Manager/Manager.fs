@@ -3,9 +3,12 @@
 open System.IO
 
 let port = "8080"
-let serverName = "Test"
-let url = sprintf "http://localhost:%s/%s" port serverName
+let url = sprintf "http://localhost:%s/resource" port
+let user_url = sprintf "%s/user" url
 let roles = []
+
+let get_wf (workflow: string) =
+    sprintf "%s/workflow/%s" url workflow
 
 //Put all given files names in a map
 let rec addFilesToMap (files : FileInfo []) : Map<string,string> =
@@ -19,42 +22,60 @@ let rec addFilesToMap (files : FileInfo []) : Map<string,string> =
 //Adds a new role to the workflow
 let addRole name roles =
     if List.exists (fun x -> x = name) roles
-    then printfn "WARNING: The role (%s) do alderady exist" name; roles
+    then printfn "WARNING: The role (%s) already exists" name; roles
     else name::roles
 
+type Query =
+| Workflow of string
+| User of string
+
+
 //POST new events and relationships to the server
-let post (urladdon : string) data =
+let post (query : Query) (data: string) (wf: string) =
     use w = new System.Net.WebClient ()
+    let query_url =
+        match query with
+        | Workflow(path) -> sprintf "%s/%s" (get_wf wf) path
+        | User(path) -> sprintf "%s/%s" user_url path
     try
         if not (data = "")
-        then w.UploadString((sprintf " %s/%s" url urladdon), "POST", data) |> printfn "POST /%s [%s] \n\t--> %s" urladdon data
-        else w.UploadString((sprintf " %s/%s" url urladdon), "POST")       |> printfn "POST /%s \n\t--> %s" urladdon
+        then w.UploadString(query_url, "POST", data) |> printfn "POST /%s [%s] \n\t--> %s" query_url data
+        else w.UploadString(query_url, "POST")       |> printfn "POST /%s \n\t--> %s" query_url
     with
         | x ->
-            printfn "POST %s/%s [%s] --> \n%s" url urladdon data x.Message
+            printfn "POST %s [%s] --> \n%s" query_url data x.Message
             printfn "ERROR: The workflow can not be completed. continue?"
             System.Console.ReadKey() |> ignore
 
 //Parses a string into a specific post to the server.
-let parse (line : string) roles useroles =
+let parse (line : string) roles useroles (workflow: string) : string list * string=
     let words = List.ofArray(line.Split ' ')
     match words with
-    | "rol"::name::[] -> addRole name roles
-    | "eve"::flag::name::eventroles -> 
+    | "wor"::name::[] ->
+        printfn ">> Setting workflow name to '%s'" name
+        [], name
+    | "rol"::name::[] ->
+        (addRole name roles), workflow
+    | "eve"::flags::name::eventroles ->
         if useroles
         then
             if List.forall (fun x -> List.exists (fun x' -> x' = x) roles) eventroles
-            then post name (sprintf "%s %s" flag (String.concat " " eventroles))
-        else post name flag
-        roles
-    | "rel"::event::typ::toEvent::[] -> 
-        post (sprintf "%s/%s" event typ) toEvent
-        roles
-    | "//"::xs | "#"::xs -> roles
-    | ""::[] -> roles
-    | x -> 
-        printfn "WARNING: \"%s\" Is not parseble" (String.concat " " x)
-        roles
+            then
+                let data = sprintf "%s,%s" flags (String.concat "," eventroles)
+                post (Workflow(name)) data workflow
+        else post (Workflow(name)) flags workflow
+        roles, workflow
+    | "rel"::event::typ::toEvent::[] ->
+        let query = Workflow(sprintf "%s/%s/to/" event typ)
+        post query toEvent workflow
+        roles, workflow
+    | "//"::xs | "#"::xs ->
+        roles, workflow
+    | ""::[] ->
+        roles, workflow
+    | x ->
+        printfn "WARNING: '%s' is not parsable" (String.concat " " x)
+        roles, workflow
 
 //Parse all lines in selected file or written file.
 let rec promptParseFile fileMap =
@@ -76,10 +97,10 @@ let rec promptParseFile fileMap =
 
     if File.Exists(filename)
     then
-        let folder roles line =
+        let folder (roles, workflow) line =
             System.Threading.Thread.Sleep(10)
-            parse line roles useroles
-        File.ReadAllLines(filename) |> List.ofArray |> List.fold folder []
+            parse line roles useroles workflow
+        File.ReadAllLines(filename) |> List.ofArray |> List.fold folder ([], "test")
     else
         printfn "ERROR: Could not find file"
         promptParseFile fileMap

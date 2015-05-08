@@ -1,3 +1,4 @@
+wor Hospital
 rol EHealth
 rol Hospital_management
 rol Hospital_specialist
@@ -6,26 +7,26 @@ rol Patient
 rol Reception_1
 rol Reception_2
 rol UBS_management
-eve 000 Request_examinations Non_specialist_physician_UBS
-eve 000 Organize_queue Reception_2
-eve 100 Create_medical_report Hospital_specialist
-eve 100 Prepare_for_and_perform_examination Hospital_specialist
-eve 100 Request_more_exams Hospital_specialist
-eve 000 Register_and_inform_patient Reception_1
-eve 000 Go_to_the_hospital Patient
-eve 100 Finish_specialist_appointment Hospital_specialist
-eve 000 Schedule_next_appointment UBS_management
-eve 100 Recommend_medication_and_ask_patient_to_return Hospital_specialist
-eve 100 Checkout Reception_1
-eve 100 Execute_specialist_examination Hospital_specialist
-eve 100 Recommend_maximum_priority Hospital_specialist
-eve 000 Go_to_the_2nd_reception Patient
-eve 100 Recommend_surgery Hospital_specialist
-eve 000 Announce_availability Hospital_management
-eve 100 Recommend_appointment_to_another_specialist Hospital_specialist
-eve 000 Recommend_specialist_appointment Non_specialist_physician_UBS
-eve 010 Visit_UBS Patient
-eve 000 Allocate_patient EHealth
+eve 0000 Request_examinations Non_specialist_physician_UBS
+eve 0000 Organize_queue Reception_2
+eve 1000 Create_medical_report Hospital_specialist
+eve 1000 Prepare_for_and_perform_examination Hospital_specialist
+eve 1000 Request_more_exams Hospital_specialist
+eve 0000 Register_and_inform_patient Reception_1
+eve 0000 Go_to_the_hospital Patient
+eve 1000 Finish_specialist_appointment Hospital_specialist
+eve 0000 Schedule_next_appointment UBS_management
+eve 1000 Recommend_medication_and_ask_patient_to_return Hospital_specialist
+eve 1000 Checkout Reception_1
+eve 1000 Execute_specialist_examination Hospital_specialist
+eve 1000 Recommend_maximum_priority Hospital_specialist
+eve 0000 Go_to_the_2nd_reception Patient
+eve 1000 Recommend_surgery Hospital_specialist
+eve 0000 Announce_availability Hospital_management
+eve 1000 Recommend_appointment_to_another_specialist Hospital_specialist
+eve 0000 Recommend_specialist_appointment Non_specialist_physician_UBS
+eve 0100 Visit_UBS Patient
+eve 0000 Allocate_patient EHealth
 rel Visit_UBS condition Recommend_specialist_appointment
 rel Visit_UBS condition Request_examinations
 rel Recommend_specialist_appointment condition Schedule_next_appointment
