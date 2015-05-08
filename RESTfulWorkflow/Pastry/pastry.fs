@@ -619,7 +619,16 @@ let start_listening<'a when 'a: equality> (node: Node) (inter_arg: PastryInterfa
                 Invalid(error_message, 404, "Illegal action")
 
             | "resource"::resource_path_parts -> // Someone requests a resource
-                let res = try_forward_resource node resource_path_parts meth body response inter
+                // Get the data from a GET request
+                let data =
+                    if meth = "GET" then
+                        let d = args.Get "data"
+                        if d = null then ""
+                        else d
+                    else
+                        body
+
+                let res = try_forward_resource node resource_path_parts meth data response inter
                 // Handle sending of backups
                 match res with
                 | Valid(node', state') ->
