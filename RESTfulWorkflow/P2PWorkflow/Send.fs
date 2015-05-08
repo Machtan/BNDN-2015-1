@@ -8,59 +8,78 @@ let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Rep
     match message with
     | GetIfCondition(eventName) ->
         let workflow, name = eventName
-        sendFunc (sprintf "workflow/%s/event/%s/getif" workflow name) "GET" "" repository
-    | Lock(eventName)           ->
+        let url = sprintf "workflow/%s/%s/getif" workflow name
+        sendFunc url "GET" "" repository
+
+    | Lock(eventName) ->
         let workflow, name = eventName
-        sendFunc (sprintf "workflow/%s/event/%s/lock" workflow name) "PUT" "" repository
-    | Unlock(eventName)         ->
+        let url = sprintf "workflow/%s/%s/lock" workflow name
+        sendFunc url "PUT" "" repository
+
+    | Unlock(eventName) ->
         let workflow, name = eventName
-        sendFunc (sprintf "workflow/%s/event/%s/unlock" workflow name) "PUT" "" repository
+        let url = sprintf "workflow/%s/%s/unlock" workflow name
+        sendFunc url "PUT" "" repository
+
     | SetIncluded(eventName, x) ->
         let workflow, name = eventName
         let boo =
             match x with
             | true  -> "true"
             | false -> "false"
-        sendFunc (sprintf "workflow/%s/event/%s/included" workflow name) "PUT" boo repository
-    | SetPending(eventName, x)  ->
+        let url = sprintf "workflow/%s/%s/included" workflow name
+        sendFunc url "PUT" boo repository
+
+    | SetPending(eventName, x) ->
         let workflow, name = eventName
         let boo =
             match x with
             | true  -> "true"
             | false -> "false"
-        sendFunc (sprintf "workflow/%s/event/%s/pending" workflow name) "PUT" boo repository
+        let url = sprintf "workflow/%s/%s/pending" workflow name
+        sendFunc url "PUT" boo repository
+
     | GetUserRoles(userName, workflowName)    ->
         sendFunc (sprintf "user/%s/workflow/%s/roles" userName workflowName) "GET" "" repository
-    | AddFromRelation(toEventName, relationTyp, fromEventName) ->
-        let thisWorkflow, thisEvent = fromEventName
-        let toWorkflow, toEvent = toEventName
-        let typ = 
+
+    | AddFromRelation(fromEvent, relationTyp, toEvent) ->
+        let from_wf, from_event = fromEvent
+        let to_wf, to_event = toEvent
+        let typ =
             match relationTyp with
             | Condition -> "condition"
             | Exclusion -> "exclusion"
             | Response  -> "response"
             | Inclusion -> "inclusion"
-        sendFunc (sprintf "workflow/%s/event/%s/%s?from" thisWorkflow thisEvent typ) "PUT" (sprintf "%s, %s" toWorkflow toEvent) repository
-    | RemoveFromRelation(toEventName, relationTyp, fromEventName) ->
-        let thisWorkflow, thisEvent = fromEventName
-        let toWorkflow, toEvent = toEventName
-        let typ = 
+        let data = sprintf "%s,%s" from_wf from_event
+        let url = sprintf "workflow/%s/%s/%s/from" to_wf to_event typ
+        sendFunc url "PUT" data repository
+
+    | RemoveFromRelation(fromEvent, relationTyp, toEvent) ->
+        let from_wf, from_event = fromEvent
+        let to_wf, to_event = toEvent
+        let typ =
             match relationTyp with
             | Condition -> "condition"
             | Exclusion -> "exclusion"
             | Response  -> "response"
             | Inclusion -> "inclusion"
-        sendFunc (sprintf "workflow/%s/event/%s/%s?from" thisWorkflow thisEvent typ) "DELETE" (sprintf "%s, %s" toWorkflow toEvent) repository
-    | RemoveToRelation(toEventName, relationTyp, fromEventName) ->
-        let thisWorkflow, thisEvent = fromEventName
-        let toWorkflow, toEvent = toEventName
-        let typ = 
+        let data = sprintf "%s,%s" from_wf from_event
+        let url = sprintf "workflow/%s/%s/%s/from" to_wf to_event typ
+        sendFunc url "DELETE" data repository
+
+    | RemoveToRelation(fromEvent, relationTyp, toEvent) ->
+        let from_wf, from_event = fromEvent
+        let to_wf, to_event = toEvent
+        let typ =
             match relationTyp with
             | Condition -> "condition"
             | Exclusion -> "exclusion"
             | Response  -> "response"
             | Inclusion -> "inclusion"
-        sendFunc (sprintf "workflow/%s/event/%s/%s?to" thisWorkflow thisEvent typ) "DELETE" (sprintf "%s, %s" toWorkflow toEvent) repository
+        let data = sprintf "%s,%s" to_wf to_event
+        let url = sprintf "workflow/%s/%s/%s/to" from_wf from_event typ
+        sendFunc url "DELETE" data repository
 
 /// tests if a ResourceResponse is positive
 let check_if_positive (response : ResourceResponse<Repository>) : bool =

@@ -96,8 +96,8 @@ let check_if_executeble (eventName : EventName) (sendFunc : SendFunc<Repository>
     else false
 
 
-/// Checks if given event is luck'et
-let check_if_lucked (eventName : EventName) (repository : Repository) : bool =
+/// Checks if given event is lock'et
+let check_if_locked (eventName : EventName) (repository : Repository) : bool =
     let workflow, name = eventName
     match Map.tryFind workflow repository.events with
     | Some(innerMap)   ->
@@ -206,19 +206,19 @@ let add_event_roles (eventName : EventName) (roles : Roles) (repository : Reposi
     update_inner_event eventName inner repository
 
 /// Adds given relationships (going from first given event) to given event and returns the result
-let add_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    if check_if_positive (send (AddFromRelation(toEventName, relations, fromEvent)) sendFunc repository)
+let add_relation_to (fromEvent : EventName) (relations : RelationType) (toEvent : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
+    if check_if_positive (send (AddFromRelation(fromEvent, relations, toEvent)) sendFunc repository)
     then
         let inner (event : Event) : UpdateEventResult =
-            EventOk({event with toRelations = Set.add (relations, toEventName) event.toRelations})
+            EventOk({event with toRelations = Set.add (relations, toEvent) event.toRelations})
         update_inner_event fromEvent inner repository
     else LockConflict
 
 /// Adds given relationships (going to given event) to given event and returns the result
-let add_relation_from (toEvent : EventName) (relations : RelationType) (fromEventName : EventName) (repository : Repository) : Result =
+let add_relation_from (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (repository : Repository) : Result =
     let inner (event : Event) : UpdateEventResult =
-        EventOk({event with fromRelations = Set.add (relations, fromEventName) event.fromRelations})
-    update_inner_event toEvent inner repository
+        EventOk({event with fromRelations = Set.add (relations, fromEvent) event.fromRelations})
+    update_inner_event toEventName inner repository
 
 /// Chance state
 let set_included (eventName : EventName) (newState : bool) (repository : Repository) : Result =
@@ -236,8 +236,8 @@ let set_executed (eventName : EventName) (newState : bool) (repository : Reposit
         EventOk({event with executed = newState})
     update_inner_event eventName inner repository
 
-/// luck given event
-let luck_event (eventName : EventName) (repository : Repository) : Result =
+/// lock given event
+let lock_event (eventName : EventName) (repository : Repository) : Result =
     let workflow, name = eventName
     let inner (x : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name x with
@@ -250,8 +250,8 @@ let luck_event (eventName : EventName) (repository : Repository) : Result =
 
     update_inner_map workflow inner repository
 
-/// unluck given event
-let unluck_event (eventName : EventName) (repository : Repository) : Result =
+/// unlock given event
+let unlock_event (eventName : EventName) (repository : Repository) : Result =
     let workflow, name = eventName
     let inner (x : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name x with
@@ -276,10 +276,10 @@ let remove_relation_to (fromEvent : EventName) (relations : RelationType) (toEve
     else LockConflict
 
 /// Removes given relation form given event and returns the result
-let remove_relation_from (toEvent : EventName) (relations : RelationType) (fromEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
+let remove_relation_from (fromEvent : EventName) (relations : RelationType) (toEvent : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     let inner (event : Event) : UpdateEventResult =
-        if Set.contains (relations, fromEventName) event.toRelations
-        then EventOk({event with toRelations = Set.remove (relations, fromEventName) event.toRelations})
+        if Set.contains (relations, fromEvent) event.toRelations
+        then EventOk({event with toRelations = Set.remove (relations, fromEvent) event.toRelations})
         else EventErr(MissingRelation)
     update_inner_event toEvent inner repository
 

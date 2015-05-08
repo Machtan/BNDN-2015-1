@@ -5,11 +5,13 @@ open Pastry
 type UserName = string              // The name of a user
 type WorkflowName = string          // The name of a workflow
 type Roles = Set<string>           //A list of roles
+
 type RelationType =                 //The types of relations
     | Condition
     | Exclusion
     | Response
     | Inclusion
+
 type EventState = {
     included: bool;
     pending: bool;
@@ -39,6 +41,11 @@ type Event = {
     fromRelations: FromRelations;
     roles: Roles;
 }
+
+// Used for checking in the rest API
+type Connection =
+| From of EventName * EventName // From A to B
+| To   of EventName * EventName // From A to B
 
 type Repository = {
     // workflow name: event name: (locked, state)

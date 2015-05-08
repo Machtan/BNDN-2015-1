@@ -16,8 +16,8 @@ val get_event_state:            EventName -> Repository -> EventState
 val check_roles:                EventName -> Roles -> Repository -> bool
 /// Checks if given event is executeble
 val check_if_executeble:        EventName -> SendFunc<Repository> -> Repository -> bool
-/// Checks if given event is luck'et
-val check_if_lucked:            EventName -> Repository -> bool
+/// Checks if given event is lock'et
+val check_if_locked:            EventName -> Repository -> bool
 /// Checks if given event is executed / excluded
 val check_condition:            EventName -> Repository -> bool
 
@@ -35,10 +35,10 @@ val add_relation_from:          EventName -> RelationType -> EventName -> Reposi
 val set_included:               EventName -> bool -> Repository -> Result
 val set_pending:                EventName -> bool -> Repository -> Result
 val set_executed:               EventName -> bool -> Repository -> Result
-/// luck given event
-val luck_event:                 EventName -> Repository -> Result
-/// unluck given event
-val unluck_event:               EventName -> Repository -> Result
+/// lock given event
+val lock_event:                 EventName -> Repository -> Result
+/// unlock given event
+val unlock_event:               EventName -> Repository -> Result
 
 //Delete
 

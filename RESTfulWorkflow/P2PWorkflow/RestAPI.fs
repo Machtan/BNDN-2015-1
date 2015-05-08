@@ -106,45 +106,40 @@ let createEvent (eventName: string) (workflowName: string) (message: string)
             | Result.Error(s) -> (repository,s, 400)
 
 // Adds a new relation
-let addRelation (workflow: string) (event: string) (reltype: string)
-        (connection: string) (target: string*string) (repo: Repository)
-        (send_func: SendFunc<Repository>) : ResourceResponse<Repository>=
-    let rel =
-        match reltype with
-        | "exclusion"   -> Some(Exclusion)
-        | "condition"   -> Some(Condition)
-        | "response"    -> Some(Response)
-        | "inclusion"   -> Some(Inclusion)
-        | _             -> None
-    match (rel) with
-    | Some(relation) ->
-            let event_name: EventName = (workflow, event)
-            let try_resp =
-                match connection with
-                | "to"      ->
-                    Some(add_relation_to event_name relation target send_func repo)
-                | "from"    ->
-                    Some(add_relation_from event_name relation target repo)
-                | _         ->
-                    None
+let addRelation (relation: RelationType) (connection: Connection)
+        (send_func: SendFunc<Repository>) (repo: Repository)
+        : ResourceResponse<Repository>=
+    let response =
+        match connection with
+        | From(a, b) -> add_relation_to a relation b send_func repo
+        | To  (a, b) -> add_relation_from a relation b repo
+    match (response) with
+    | Result.Ok(repo')          -> (repo', "Created.", 201)
+    | Result.Unauthorized       -> (repo, "Unauthorized", 401)
+    | Result.NotExecutable      -> (repo, "The event is not executable.", 400)
+    | Result.MissingRelation    -> (repo, "The relation is missing.", 400)
+    | Result.LockConflict       -> (repo, "Encountered LockConflict.", 400)
+    | Result.Error(error)       -> (repo, error, 400)
+    | Result.MissingEvent       -> (repo, "Event is missing", 400)
+    | Result.MissingWorkflow    -> (repo, "Workflow is missing", 400)
 
-            match try_resp with
-            | Some(response) ->
-                match (response) with
-                | Result.Ok(repo')          -> (repo', "Created.", 201)
-                | Result.Unauthorized       -> (repo, "Unauthorized", 401)
-                | Result.NotExecutable      -> (repo, "The event is not executable.", 400)
-                | Result.MissingRelation    -> (repo, "The relation is missing.", 400)
-                | Result.LockConflict       -> (repo, "Encountered LockConflict.", 400)
-                | Result.Error(error)       -> (repo, error, 400)
-                | Result.MissingEvent       -> (repo, "Event is missing", 400)
-                | Result.MissingWorkflow    -> (repo, "Workflow is missing", 400)
-            | None ->
-                let msg = sprintf "Invalid connection '%s' should be 'to' or 'from'" connection
-                (repo, msg, 400)
-
-    | None ->
-        (repo,"Invalid relation type", 400)
+// Deletes a relation
+let delete_relation (relation: RelationType) (connection: Connection)
+        (send_func: SendFunc<Repository>) (repo: Repository)
+        : ResourceResponse<Repository>=
+    let response =
+        match connection with
+        | From(a, b) -> remove_relation_to a relation b send_func repo
+        | To  (a, b) -> remove_relation_from a relation b send_func repo
+    match (response) with
+    | Result.Ok(repo')          -> (repo', "Created.", 201)
+    | Result.Unauthorized       -> (repo, "Unauthorized", 401)
+    | Result.NotExecutable      -> (repo, "The event is not executable.", 400)
+    | Result.MissingRelation    -> (repo, "The relation is missing.", 400)
+    | Result.LockConflict       -> (repo, "Encountered LockConflict.", 400)
+    | Result.Error(error)       -> (repo, error, 400)
+    | Result.MissingEvent       -> (repo, "Event is missing", 400)
+    | Result.MissingWorkflow    -> (repo, "Workflow is missing", 400)
 
 let createWorkflow workflowName repo  : ResourceResponse<Repository> =
     let response = create_workflow workflowName repo
@@ -170,7 +165,6 @@ let deleteWorkflow workflowName repo  : ResourceResponse<Repository> =
     | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
     | Result.Error(s) -> (repo,s, 400)
 
-
 let createUser userName repo  : ResourceResponse<Repository> =
     let response = create_user userName repo
     match (response) with
@@ -186,7 +180,6 @@ let deleteUser userName repo  : ResourceResponse<Repository> =
     | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
     | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
     | ResultUser.MissingUser -> (repo,"The relation is missing.", 400)
-
 
 let getWorkFlowEvents workflow repo  : ResourceResponse<Repository> =
     let response = get_workflow_events workflow repo
@@ -251,19 +244,50 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
     | _ ->
         (repo, "Unknown event command gotten!", 400)
 
-let handle_relation (workflow_name: string) (event_name: string) (relation: string)
-        (connection: string) (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>)
+let handle_relation (workflow_name: string) (event_name: string) (reltype: string)
+        (con_str: string) (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>)
         : ResourceResponse<Repository> =
-        if meth = "POST" then
-            let args = split message ' '
-            if not ((List.length args) = 2) then
-                let msg = sprintf "Invalid arguments: %A should be on the from <workflow>,<event>" message
-                (repo, msg, 400)
-            else
-                let target = (args.[0], args.[1])
-                addRelation workflow_name event_name relation connection target repo sendFunc
-        else
-            (repo, "Invalid method for adding a relation", 400)
+    let args = split message ','
+    if not ((List.length args) = 2) then
+        let msg = sprintf "Invalid arguments: %A should be on the from <workflow>,<event>" message
+        (repo, msg, 400)
+    else
+        let rel =
+            match reltype with
+            | "exclusion"   -> Some(Exclusion)
+            | "condition"   -> Some(Condition)
+            | "response"    -> Some(Response)
+            | "inclusion"   -> Some(Inclusion)
+            | _             -> None
+
+        let data = (args.[0], args.[1])
+
+        let con =
+            match con_str with
+            | "to"      -> Some( To((workflow_name, event_name), data) )
+            | "from"    -> Some( From(data, (workflow_name, event_name)) )
+            | _         -> None
+
+        match rel, con with
+        | Some(relation), Some(connection) ->
+            match meth with
+            | "PUT" ->
+                addRelation relation connection sendFunc repo
+
+            | "DELETE" ->
+                delete_relation relation connection sendFunc repo
+
+            | _ ->
+                (repo, "Invalid method for adding a relation", 400)
+
+        | None, _ ->
+            let msg = sprintf "Invalid relation type '%s'" reltype
+            (repo, msg, 400)
+
+        | _, None ->
+            let msg = sprintf "Invalid connection '%s' should be 'to' or 'from'" con_str
+            (repo, msg, 400)
+
 
 // Handles a full migration (a node has died, and is being remade)
 let handle_full_migration (meth: string) (data: string)
