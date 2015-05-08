@@ -21,6 +21,6 @@ UserLogic = ["Repository_types", "EventLogic", "Pastry"]
 WorkflowLogic = ["Repository_types", "Pastry"]
 RestAPI = [
     "Repository_types", "EventLogic", "WorkflowLogic",
-    "UserLogic", "Pastry", "Migrate"
+    "UserLogic", "Pastry", "Migrate", "Newtonsoft.Json"
 ]
 Program = ["RestAPI", "Pastry", "Newtonsoft.Json"]

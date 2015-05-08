@@ -6,6 +6,8 @@ open EventLogic
 open WorkflowLogic
 open Pastry
 open PastryTypes
+open Migrate
+open Newtonsoft.Json
 
 // Splits a string into a list by a char
 let split (str: string) (c: char) =
@@ -48,7 +50,7 @@ let getPending event workflowName repo : ResourceResponse<Repository> =
     match (eventState) with
         | Some(evState) -> (repo,(string)evState.pending, statusCode)
         | None ->  (repo,"Event could not be received.", statusCode)
-        
+
 // Attempts to execute the given event
 let setExecuted workflowName eventName userName repo sendFunc :ResourceResponse<Repository>  =
     let event = (workflowName,eventName): EventName
@@ -62,7 +64,7 @@ let setExecuted workflowName eventName userName repo sendFunc :ResourceResponse<
             | Result.Error(s) -> (repo,s, 400)
 
 // Attempts to create a new event
-let deleteEvent eventName workflowName (repository : Repository) sendFunc : ResourceResponse<Repository> =    
+let deleteEvent eventName workflowName (repository : Repository) sendFunc : ResourceResponse<Repository> =
         let event = (workflowName,eventName): EventName
         let response = delete_event event sendFunc repository
         match (response) with
@@ -81,7 +83,7 @@ let createEvent eventName workflowName attribute (repository : Repository) : Res
         let msg = sprintf "Received invalid initial event state: %s" str
         printfn "%s" msg
         (repository,msg, 400)
-    else        
+    else
         let initialState = {included = (str.[0] = '1'); pending = (str.[1] = '1'); executed = (str.[2] = '1')} : EventState
         let event = (workflowName,eventName): EventName
         let response = create_event event initialState false repository
@@ -98,7 +100,7 @@ let addRelation workflowName eventName attribute repo sendFunc : ResourceRespons
     let args = split attribute ' '
     let url = List.head args
     let eventTo = (workflowName,List.head (List.tail args))
-    
+
     let urlParts = split url '/'
     let typ = Seq.last urlParts
     let rel =
@@ -109,8 +111,8 @@ let addRelation workflowName eventName attribute repo sendFunc : ResourceRespons
         | "inclusion"   -> Some(Inclusion)
         | _             -> None
     match (rel) with
-        | Some(r) ->   
-                        let eventFrom = (workflowName,eventName): EventName 
+        | Some(r) ->
+                        let eventFrom = (workflowName,eventName): EventName
                         let response = add_relation_to eventFrom r eventTo sendFunc repo
                         match (response) with
                             | Result.Ok(r) -> (r,"Created.", 201)
@@ -120,7 +122,7 @@ let addRelation workflowName eventName attribute repo sendFunc : ResourceRespons
                             | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
                             | Result.Error(s) -> (repo,s, 400)
         | None -> (repo,"Invalid relation type", 400)
-    
+
 let createWorkflow workflowName repo  : ResourceResponse<Repository> =
         let response = create_workflow workflowName repo
         match (response) with
@@ -128,7 +130,7 @@ let createWorkflow workflowName repo  : ResourceResponse<Repository> =
             | Result.Unauthorized -> (repo,"Unauthorized", 401)
             | Result.NotExecutable -> (repo,"The event is not executable.", 400)
             | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
-            
+
 let deleteWorkflow workflowName repo  : ResourceResponse<Repository> =
         let response = delete_workflow workflowName repo
         match (response) with
@@ -146,16 +148,16 @@ let createUser userName repo  : ResourceResponse<Repository> =
             | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
             | ResultUser.MissingUser -> (repo,"user is missing", 400)
 
-let deleteUser userName repo  : ResourceResponse<Repository> = 
+let deleteUser userName repo  : ResourceResponse<Repository> =
         let response = delete_user userName repo
         match (response) with
             | ResultUser.Ok(w) -> (repo,"Deleted.", 200)
             | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
             | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
-            | ResultUser.MissingUser -> (repo,"The relation is missing.", 400) 
+            | ResultUser.MissingUser -> (repo,"The relation is missing.", 400)
 
 
-let getWorkFlowEvents workflow repo  : ResourceResponse<Repository> = 
+let getWorkFlowEvents workflow repo  : ResourceResponse<Repository> =
         let response = get_workflow_events workflow repo
         (repo,String.concat "," response, 200)
 
@@ -201,7 +203,7 @@ let handle_workflow (wf: string) (meth: string) (repo: Repository) : ResourceRes
 // Matches the given event and tries to handle the request
 let handle_event (workflow_name: string) (event_name: string) (attribute: string)
         (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>) : ResourceResponse<Repository> =
-       
+
     // Find the event in this repository if it exists
     let response =
         match meth, attribute with
@@ -225,8 +227,44 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
             failwith "Not Implemented"//"Unsupported operation", 404, "Not found", initialState
     response
 
+// Handles a full migration (a node has died, and is being remade)
+let handle_full_migration (meth: string) (data: string)
+        (send_func: SendFunc<Repository>) (initial_state: Repository)
+        : ResourceResponse<Repository> =
+    match meth with
+    | "PUT" ->
+        printfn ">>> Migrating........"
+        let dead_repo = JsonConvert.DeserializeObject<Repository> data
+        let cmds = get_all_migration_commands dead_repo
+        let migrate cmd state =
+            let (new_state, resp, status) = send_func cmd.path cmd.meth cmd.data state
+            new_state
+        let updated_state = List.foldBack migrate cmds initial_state
+        printfn ">>> Finished migrating!"
+        (updated_state, "Migrated!", 200)
+    | _ ->
+        (initial_state, "Bad method used: migrate requires PUT!", 400)
+
+// Handles the migration of resources on this repository that are closer to
+// a newly-joined node
+let handle_partial_migration (meth: string) (from_guid: string) (to_guid: string)
+        (send_func: SendFunc<Repository>) (initial_state: Repository)
+        : ResourceResponse<Repository> =
+    match meth with
+    | "PUT" ->
+        let should_migrate path = belongs_on_other from_guid path to_guid
+        let (updated_state, cmds) = get_migratable_commands initial_state should_migrate
+        let migrate cmd state =
+            let (new_state, resp, status) = send_func cmd.path cmd.meth cmd.data state
+            new_state
+        let final_state = List.foldBack migrate cmds updated_state
+        (final_state, "Migrated!", 200)
+
+    | _ ->
+        (initial_state, "Bad method used: migrate requires PUT!", 400)
+
 // The actual resource handling function
-let resource_handler (path: string) (meth: string) (message: string) (send_func: SendFunc<Repository>)
+let handle_resource (path: string) (meth: string) (message: string) (send_func: SendFunc<Repository>)
         (initial_state: Repository) : ResourceResponse<Repository> =
 
     let parts = split path '/'
@@ -235,6 +273,7 @@ let resource_handler (path: string) (meth: string) (message: string) (send_func:
         match parts with
         | [] ->
             initial_state, "Nothing asked, nothing found.",400
+
         | "user"::user::[] ->
             handle_user user meth initial_state
 
@@ -243,6 +282,13 @@ let resource_handler (path: string) (meth: string) (message: string) (send_func:
 
         | "workflow"::workflow::event::attribute::[] ->
             handle_event workflow event attribute meth message initial_state send_func
+
+        | "migrate"::[] ->
+            handle_full_migration meth message send_func initial_state
+
+        | "migrate"::from_guid::to_guid::[] ->
+            handle_partial_migration meth from_guid to_guid send_func initial_state
+
         | _ ->
             printfn "Invalid path gotten: %s" path
             initial_state, "Invalid path", 400
