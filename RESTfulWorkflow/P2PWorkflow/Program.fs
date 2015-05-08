@@ -16,14 +16,9 @@ let main args =
         printfn "Peer: %A" known_peer
         // url, method, send_func, state -> state, response
         // Yay!
-        let dummy_handler path meth send_func (state: 'a) : ResourceResponse<'a> =
-            printfn "%s" <| String.replicate 50 "="
-            printfn "REPOSITORY: Dummy handler is handling '%s' '%s'" meth path
-            printfn "%s" <| String.replicate 50 "="
-            state, "Hello World", 200
 
         // So serious
-        let dummy_serializer (state: Repository) : string =
+        let serialize_state (state: Repository) : string =
             JsonConvert.SerializeObject state
 
         let pad_guid_with_zeroes (guid_str: string) =
@@ -38,7 +33,9 @@ let main args =
             logs = [];
         }
 
-        let node = test_server<Repository> address known_peer resource_handler dummy_serializer guid_str state
+        let handler = handle_resource // RestAPI
+
+        let node = test_server<Repository> address known_peer handler serialize_state guid_str state
         ()
         // Start listening...
     | _ ->

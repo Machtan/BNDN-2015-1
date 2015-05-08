@@ -151,14 +151,38 @@ let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<R
 
             if lockMany lockSet
             then
-                let updateState x =
-                    let typ, event = x
-                    match typ with
-                    | Condition -> true
-                    | Exclusion -> check_if_positive (send (SetIncluded(event, false)) sendFunc repository)
-                    | Response  -> check_if_positive (send (SetPending(event, true)) sendFunc repository)
-                    | Inclusion -> check_if_positive (send (SetIncluded(event, true)) sendFunc repository)
-                if Set.forall updateState event.toRelations
+                let updateState x y =
+                    let stat, repo = y
+                    if stat
+                    then
+                        let typ, event = x
+                        match typ with
+                        | Condition -> y
+                        | Exclusion -> 
+                            let RR = send (SetIncluded(event, false)) sendFunc repo
+                            if check_if_positive RR
+                            then
+                                let newRepository, _, _ = RR
+                                (true, newRepository)
+                            else (false, repo)
+                        | Response  ->
+                            let RR = send (SetPending(event, true)) sendFunc repo
+                            if check_if_positive RR
+                            then
+                                let newRepository, _, _ = RR
+                                (true, newRepository)
+                            else (false, repo)                        
+                        | Inclusion ->
+                            let RR = send (SetIncluded(event, true)) sendFunc repo
+                            if check_if_positive RR
+                            then
+                                let newRepository, _, _ = RR
+                                (true, newRepository)
+                            else (false, repo)
+                    else y
+
+                let state, repository = Set.foldBack updateState event.toRelations (true, repository)
+                if state
                 then
                     if Set.forall (fun x -> check_if_positive (send (Unlock(x)) sendFunc repository)) lockSet
                     then
