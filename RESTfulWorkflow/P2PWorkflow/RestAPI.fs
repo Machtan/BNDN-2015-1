@@ -75,18 +75,22 @@ let deleteEvent eventName workflowName (repository : Repository) sendFunc : Reso
             | Result.LockConflict -> (repository,"Encountered LockConflict.", 400)
             | Result.Error(s) -> (repository,s, 400)
 
-let createEvent eventName workflowName attribute (repository : Repository) : ResourceResponse<Repository> =
-    let args = split attribute ' '
-    let str = List.head args
+let createEvent (eventName: string) (workflowName: string) (message: string)
+        (repository : Repository) : ResourceResponse<Repository> =
+    let args = split message ','
+    let state_str = List.head args
     let roles = List.tail args
-    if not (str.Length = 3) then
-        let msg = sprintf "Received invalid initial event state: %s" str
+    if not (state_str.Length = 4) then
+        let msg = sprintf "Received invalid initial event state: %s" state_str
         printfn "%s" msg
-        (repository,msg, 400)
+        (repository, msg, 400)
     else
-        let initialState = {included = (str.[0] = '1'); pending = (str.[1] = '1'); executed = (str.[2] = '1')} : EventState
+        let des index =
+            state_str.[index] = '1'
+        let initialState = {included = des 0; pending = des 1; executed = des 2} : EventState
+        let locked = des 3
         let event = (workflowName,eventName): EventName
-        let response = create_event event initialState false repository
+        let response = create_event event initialState locked repository
         match (response) with
             | Result.Ok(r) -> (r,"Created.", 201)
             | Result.Unauthorized -> (repository,"Unauthorized", 401)
@@ -203,29 +207,26 @@ let handle_workflow (wf: string) (meth: string) (repo: Repository) : ResourceRes
 // Matches the given event and tries to handle the request
 let handle_event (workflow_name: string) (event_name: string) (attribute: string)
         (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>) : ResourceResponse<Repository> =
-
     // Find the event in this repository if it exists
-    let response =
-        match meth, attribute with
-        | "POST", "" ->
-            createEvent event_name workflow_name message repo
-        | "DELETE", "" ->
-            deleteEvent event_name workflow_name repo sendFunc
-        | "GET", "executed" ->
-            getExecuted event_name workflow_name repo
-        | "PUT", "executed" ->
-            setExecuted workflow_name event_name message repo sendFunc
-        | "GET", "pending" ->
-            getPending event_name workflow_name repo
-        | "GET", "included" ->
-            getIncluded event_name workflow_name repo
-        | "GET", "executable" ->
-            getExecutable event_name workflow_name repo sendFunc
-        | "POST", relation ->
-            addRelation workflow_name event_name relation repo sendFunc
-        | _ ->
-            failwith "Not Implemented"//"Unsupported operation", 404, "Not found", initialState
-    response
+    match meth, attribute with
+    | "POST", "" ->
+        createEvent event_name workflow_name message repo
+    | "DELETE", "" ->
+        deleteEvent event_name workflow_name repo sendFunc
+    | "GET", "executed" ->
+        getExecuted event_name workflow_name repo
+    | "PUT", "executed" ->
+        setExecuted workflow_name event_name message repo sendFunc
+    | "GET", "pending" ->
+        getPending event_name workflow_name repo
+    | "GET", "included" ->
+        getIncluded event_name workflow_name repo
+    | "GET", "executable" ->
+        getExecutable event_name workflow_name repo sendFunc
+    | "POST", relation ->
+        addRelation workflow_name event_name relation repo sendFunc
+    | _ ->
+        failwith "Not Implemented"//"Unsupported operation", 404, "Not found", initialState
 
 // Handles a full migration (a node has died, and is being remade)
 let handle_full_migration (meth: string) (data: string)
