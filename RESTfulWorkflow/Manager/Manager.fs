@@ -26,24 +26,26 @@ let addRole name roles =
     else name::roles
 
 type Query =
-| Workflow of string
+| Workflow of string * string
 | User of string
 
 
 //POST new events and relationships to the server
-let post (query : Query) (data: string) (wf: string) =
+let upload (query : Query) (meth: string) (data: string) =
     use w = new System.Net.WebClient ()
     let query_url =
         match query with
-        | Workflow(path) -> sprintf "%s/%s" (get_wf wf) path
+        | Workflow(wf, path) ->
+            if path = "" then get_wf wf
+            else sprintf "%s/%s" (get_wf wf) path
         | User(path) -> sprintf "%s/%s" user_url path
     try
         if not (data = "")
-        then w.UploadString(query_url, "POST", data) |> printfn "POST /%s [%s] \n\t--> %s" query_url data
-        else w.UploadString(query_url, "POST")       |> printfn "POST /%s \n\t--> %s" query_url
+        then w.UploadString(query_url, meth, data) |> printfn "%s /%s [%s] \n\t--> %s" meth query_url data
+        else w.UploadString(query_url, meth)       |> printfn "%s /%s \n\t--> %s" meth query_url
     with
         | x ->
-            printfn "POST %s [%s] --> \n%s" query_url data x.Message
+            printfn "%s %s [%s] --> \n%s" meth query_url data x.Message
             printfn "ERROR: The workflow can not be completed. continue?"
             System.Console.ReadKey() |> ignore
 
@@ -53,21 +55,24 @@ let parse (line : string) roles useroles (workflow: string) : string list * stri
     match words with
     | "wor"::name::[] ->
         printfn ">> Setting workflow name to '%s'" name
+        upload (Workflow(name, "")) "POST" ""
         [], name
     | "rol"::name::[] ->
         (addRole name roles), workflow
     | "eve"::flags::name::eventroles ->
+        let query = Workflow(workflow, name)
         if useroles
         then
             if List.forall (fun x -> List.exists (fun x' -> x' = x) roles) eventroles
             then
                 let data = sprintf "%s,%s" flags (String.concat "," eventroles)
-                post (Workflow(name)) data workflow
-        else post (Workflow(name)) flags workflow
+                upload query "POST" data
+        else upload query "POST" flags
         roles, workflow
-    | "rel"::event::typ::toEvent::[] ->
-        let query = Workflow(sprintf "%s/%s/to/" event typ)
-        post query toEvent workflow
+    | "rel"::event::typ::to_event::[] ->
+        let query = Workflow(workflow, sprintf "%s/%s/to" event typ)
+        let data = sprintf "%s,%s" workflow to_event
+        upload query "PUT" data
         roles, workflow
     | "//"::xs | "#"::xs ->
         roles, workflow
