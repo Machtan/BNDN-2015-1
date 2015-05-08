@@ -300,6 +300,9 @@ let handle_resource (path: string) (meth: string) (message: string) (send_func: 
         | "workflow"::workflow::[] ->
             handle_workflow workflow meth initial_state
 
+        | "workflow"::workflow::event::[] -> // Create event
+            handle_event workflow event "" meth message initial_state send_func
+
         | "workflow"::workflow::event::attribute::[] ->
             handle_event workflow event attribute meth message initial_state send_func
 

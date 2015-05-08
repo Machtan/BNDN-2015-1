@@ -6,6 +6,8 @@ authors = [
 libraries = [
     "Newtonsoft.Json",
     "Pastry",
+    "PastryTypes",
+    "PastryUtils",
 ]
 
 includes = [
