@@ -20,51 +20,46 @@ let check_workflow (wfName : WorkflowName) (repos : Repository) : bool =
 //    failwith "Not implemented yed."
 
 /// Gets all events in given workflow
-let get_workflow_events (wfName : WorkflowName) (repos : Repository) : string list =
-    match Map.tryFind wfName repos.workflows with
-    | Some(x)   -> x
-    | None      -> failwith "Workflow Does not exist"
+let get_workflow_events (wfName : WorkflowName) (repos : Repository) : (string list) option =
+    Map.tryFind wfName repos.workflows
 
 //Update
 
 /// Adds a given event to a given Workflow and returns the result
-let add_event (wfName : WorkflowName) (event : EventName) (repos : Repository) : Result =
-    let workflowName, event = event
-    let events = 
-        match repos.workflows.TryFind(wfName) with
-        | Some(v) -> v
-        | None -> failwith "Workflow Does not exist" 
-    Result.Ok({repos with workflows = Map.add wfName (event::events) repos.workflows})
-
+let add_event_to_workflow (event : EventName) (repo : Repository) : Repository option =
+    let workflow, event_name = event
+    match repo.workflows.TryFind(workflow) with
+    | Some(events) ->
+        let updated_workflows = Map.add workflow (event_name::events) repo.workflows
+        Some({repo with workflows = updated_workflows; })
+    | None ->
+        None
 
 //Delete
 
 /// Removes given event form given workflow and returns the result
-let remove_event (wfName : WorkflowName) (event : EventName) (repos : Repository) : Result =
-    let workflowName, event = event
-    let events = 
-        match repos.workflows.TryFind(wfName) with
-        | Some(v) -> v
-        | None -> failwith "Workflow Does not exist" 
-    let rec remove_first events event =
-        match events with
-        |h::events when h = event -> events
-        |h::events -> h::(remove_first events event)
-        | _ -> []
-    Result.Ok({repos with workflows = Map.add wfName (remove_first events event) repos.workflows})
+let remove_event_from_workflow (event_name : EventName) (repo : Repository) : Repository option =
+    let workflow_name, event = event_name
+    match Map.tryFind workflow_name repo.workflows with
+    | Some(events) ->
+        let updated_events = List.filter (fun e -> not (e = event)) events
+        let updated_workflows = Map.add workflow_name updated_events repo.workflows
+        Some({ repo with workflows = updated_workflows; })
+    | None ->
+        None
 
 /// Deletes given workflow and returns it if its susesful
-let delete_workflow (wfName : WorkflowName) (repos : Repository) : Result =
-    let events = 
-        match repos.workflows.TryFind(wfName) with
-        | Some(v) -> v
-        | None -> failwith "Workflow Does not exist" 
-    let rec deleteEvents events=
-        match events with
-        | h::events ->
-            match remove_event wfName h repos with  
-            |Result.Ok(x) -> 
-                deleteEvents events
-            | _ -> []
-        | _ -> []
-    Result.Ok({repos with workflows = Map.remove wfName repos.workflows})
+let delete_workflow (wfName : WorkflowName) (repos : Repository) : Repository option =
+    match repos.workflows.TryFind(wfName) with
+    | Some(_) ->
+        Some({repos with workflows = Map.remove wfName repos.workflows})
+    | None ->
+        None
+    //let rec deleteEvents events=
+    //    match events with
+    //    | event::events ->
+    //        match remove_event (wfName, event) repos with
+    //        |Result.Ok(x) ->
+    //            deleteEvents events
+    //        | _ -> []
+    //    | _ -> []

@@ -153,18 +153,6 @@ let createWorkflow workflowName repo  : ResourceResponse<Repository> =
     | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
     | Result.Error(s) -> (repo,s, 400)
 
-let deleteWorkflow workflowName repo  : ResourceResponse<Repository> =
-    let response = delete_workflow workflowName repo
-    match (response) with
-    | Result.Ok(r) -> (r,"Created.", 201)
-    | Result.Unauthorized -> (repo,"Unauthorized", 401)
-    | Result.NotExecutable -> (repo,"The event is not executable.", 400)
-    | Result.MissingRelation -> (repo,"The relation is missing.", 400)
-    | Result.LockConflict -> (repo,"Encountered LockConflict.", 400)
-    | Result.MissingEvent -> (repo,"Event is missing", 400)
-    | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
-    | Result.Error(s) -> (repo,s, 400)
-
 let createUser userName repo  : ResourceResponse<Repository> =
     let response = create_user userName repo
     match (response) with
@@ -180,10 +168,6 @@ let deleteUser userName repo  : ResourceResponse<Repository> =
     | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
     | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
     | ResultUser.MissingUser -> (repo,"The relation is missing.", 400)
-
-let getWorkFlowEvents workflow repo  : ResourceResponse<Repository> =
-    let response = get_workflow_events workflow repo
-    (repo,String.concat "," response, 200)
 
 // Creates a new repository
 let create_repository () : Repository =
@@ -210,14 +194,35 @@ let handle_user (user_name: string) (meth: string) (repo: Repository) : Resource
         repo, "Unsupported user operation", 400
 
 // Handles requests for the givien workflow (getting the events in it)
-let handle_workflow (wf: string) (meth: string) (repo: Repository) : ResourceResponse<Repository> =
+let handle_workflow (workflow: string) (meth: string) (data: string) (repo: Repository)
+        : ResourceResponse<Repository> =
     match meth with
     | "GET" ->
-        getWorkFlowEvents wf repo
+        match get_workflow_events workflow repo with
+        | Some(events) ->
+            repo, (String.concat "," events), 200
+        | None ->
+            let msg = sprintf "The workflow '%s' was not found!" workflow
+            repo, msg, 404
+
     | "POST" ->
-        createWorkflow wf repo
+        createWorkflow workflow repo
+
     | "DELETE" ->
-        deleteWorkflow wf repo
+        match delete_workflow workflow repo with
+        | Some(updated_state) ->
+            updated_state, "Deleted", 200
+        | None ->
+            let msg = sprintf "The workflow '%s' was not found!" workflow
+            repo, msg, 404
+
+    | "PUT" ->
+        match add_event_to_workflow (workflow, data) repo with
+        | Some(updated_state) ->
+            updated_state, "Event added!", 200
+        | None ->
+            let msg = sprintf "The workflow '%s' was not found!" workflow
+            repo, msg, 404
     | _ ->
         repo, "Unsupported workflow operation", 400
 
@@ -343,7 +348,7 @@ let handle_resource (path: string) (meth: string) (message: string) (send_func: 
             handle_user user meth initial_state
 
         | "workflow"::workflow::[] ->
-            handle_workflow workflow meth initial_state
+            handle_workflow workflow meth message initial_state
 
         | "workflow"::workflow::event::[] -> // Create event
             handle_event workflow event "" meth message initial_state send_func
