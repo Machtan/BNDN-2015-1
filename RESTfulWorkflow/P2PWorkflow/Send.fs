@@ -82,15 +82,12 @@ let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Rep
         sendFunc url "DELETE" data repository
 
 /// tests if a ResourceResponse is positive
-let check_if_positive (response : ResourceResponse<Repository>) : bool =
-    let _, _, status = response
+let check_if_positive (status: int) : bool =
     if status >= 200 && status < 300
     then true
     else false
 
-let check_if_positive_bool (response : ResourceResponse<Repository>) : bool =
-    if check_if_positive response
-    then
-        let _, answer, _ = response
-        answer = "True"
+let check_if_positive_bool (resp: string) (status: int): bool =
+    if check_if_positive status
+    then resp = "True"
     else false

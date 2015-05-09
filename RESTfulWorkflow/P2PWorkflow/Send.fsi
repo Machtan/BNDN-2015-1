@@ -7,7 +7,7 @@ open Repository_types
 val send: Message -> SendFunc<Repository> -> Repository -> ResourceResponse<Repository>
 
 /// tests if a ResourceResponse is positive http
-val check_if_positive: ResourceResponse<Repository> -> bool
+val check_if_positive: int -> bool
 
 /// tests if a ResourceResponse is positive bool
-val check_if_positive_bool: ResourceResponse<Repository> -> bool
+val check_if_positive_bool: string -> int -> bool

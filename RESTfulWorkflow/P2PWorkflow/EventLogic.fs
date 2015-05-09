@@ -87,7 +87,8 @@ let check_if_executeble (eventName : EventName) (sendFunc : SendFunc<Repository>
     let checkConditions x =
         let typ, fromEventName = x
         let fromWorkflow, fromName = fromEventName
-        check_if_positive_bool (send (GetIfCondition(eventName)) sendFunc repository)
+        let (_, resp, status) = send (GetIfCondition(eventName)) sendFunc repository
+        check_if_positive_bool resp status
 
     if event.included = true
     then
@@ -118,8 +119,9 @@ let check_condition (eventName : EventName) (repository : Repository) : bool =
         else false
     else true
 
-/// Executed and returns the given envent if the given user have the reqred role
-let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
+/// Executes and returns the given event if the given user has the required role
+let execute (eventName : EventName) (userName : UserName)
+        (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     if check_if_executeble eventName sendFunc repository
     then
         let workflow, _ = eventName
@@ -128,32 +130,40 @@ let execute (eventName : EventName) (userName : UserName) (sendFunc : SendFunc<R
         if check_roles eventName usersRoles repository
         then
             let event = get_event eventName repository
+            // Find out which events need to be locked before executing this one
             let onlyNecessary x =
               let typ, _ = x
               typ = Condition || typ = Exclusion
             let setSplit acc x =
                 let _, event = x
                 Set.add event acc
-            let lockSet = Set.fold setSplit Set.empty (Set.union (Set.filter onlyNecessary event.fromRelations) event.toRelations)
-            let lockMany (x : Set<EventName>) : bool =
-                let inner x s =
-                    let status, acc = s
-                    if status
-                    then
-                        if (check_if_positive (send (Lock(x)) sendFunc repository))
+            let necessary_from_relations = Set.filter onlyNecessary event.fromRelations
+            let necessary_relations = Set.union necessary_from_relations event.toRelations
+            let lockSet = Set.fold setSplit Set.empty necessary_relations
+
+            // Try to lock them all
+            let lockMany (x : Set<EventName>) (repo: Repository) : bool * Repository =
+                let inner event (can_continue, locked_events, locked_state) =
+                    if can_continue then
+                        let (state, resp, status) = send (Lock(event)) sendFunc locked_state
+                        if check_if_positive status
                         then (status, Set.add x acc)
                         else (false, acc)
                     else s
 
-                let status, unlockSet = Set.foldBack inner lockSet (true, Set.empty)
+                let (status, unlockSet, updated_state) = Set.foldBack inner lockSet (true, Set.empty, repo)
                 if status
                 then true
                 else
-                    if Set.forall (fun x -> check_if_positive (send (Lock(x)) sendFunc repository)) unlockSet
+                    let lock_succesful event =
+                        let (state, resp, status) = send (Lock(event)) sendFunc repository
+                        check_if_positive status
+                    if Set.forall unlockSet
                     then false
-                    else failwith "... No good"
+                    else failwith "ERROR: Could not remove locks after failed execution"
 
-            if lockMany lockSet
+            let (succesfully_locked, locked_state) = lockMany lockSet
+            if succesfully_locked
             then
                 let updateState x y =
                     let stat, repo = y
@@ -207,11 +217,12 @@ let add_event_roles (eventName : EventName) (roles : Roles) (repository : Reposi
 
 /// Adds given relationships (going from first given event) to given event and returns the result
 let add_relation_to (fromEvent : EventName) (relations : RelationType) (toEvent : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    if check_if_positive (send (AddFromRelation(fromEvent, relations, toEvent)) sendFunc repository)
+    let (updated_state, msg, status) = send (AddFromRelation(fromEvent, relations, toEvent)) sendFunc repository
+    if check_if_positive (status)
     then
         let inner (event : Event) : UpdateEventResult =
             EventOk({event with toRelations = Set.add (relations, toEvent) event.toRelations})
-        update_inner_event fromEvent inner repository
+        update_inner_event fromEvent inner updated_state
     else LockConflict
 
 /// Adds given relationships (going to given event) to given event and returns the result

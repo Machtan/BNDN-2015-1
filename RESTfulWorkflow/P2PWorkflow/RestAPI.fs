@@ -244,6 +244,22 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         getPending event_name workflow_name repo
     | "GET", "included" ->
         getIncluded event_name workflow_name repo
+    | "PUT", "lock" ->
+        match lock_event (workflow_name, event_name) repo with
+        | Ok(updated_state) ->
+            updated_state, "Locked!", 200
+        | LockConflict ->
+            repo, "Event already locked!", 400
+        | MissingEvent ->
+            repo, "Event not found", 404
+        | err ->
+            repo, (sprintf "Got error %A" err), 400
+    | "PUT", "unlock" ->
+        match unlock_event (workflow_name, event_name) repo with
+        | Ok(updated_state) ->
+            updated_state, "Unlocked!", 200
+        | err ->
+            repo, (sprintf "Got error %A" err), 400
     | "GET", "executable" ->
         getExecutable event_name workflow_name repo sendFunc
     | _ ->
