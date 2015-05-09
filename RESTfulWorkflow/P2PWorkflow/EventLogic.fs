@@ -119,6 +119,70 @@ let check_condition (eventName : EventName) (repository : Repository) : bool =
         else false
     else true
 
+// Try to lock them all
+let lock_all (events_to_lock: Set<EventName>) (sendFunc: SendFunc<Repository>)
+        (repo: Repository) : bool * Repository =
+    let inner event (can_continue, locked_events, locked_state) =
+        if can_continue then
+            let (state, resp, status) = send (Lock(event)) sendFunc locked_state
+            if check_if_positive status
+            then (true, Set.add event locked_events, state)
+            else (false, locked_events, locked_state)
+        else (can_continue, locked_events, locked_state)
+
+    // TODO: Send this status further
+    let (status, unlockSet, updated_state) = Set.foldBack inner events_to_lock (true, Set.empty, repo)
+    if status then
+        true, updated_state
+    else
+        let lock_succesful event =
+            let (state, resp, status) = send (Lock(event)) sendFunc repo
+            check_if_positive status
+        if Set.forall lock_succesful unlockSet then
+            false, repo // Give the old back
+        else failwith "ERROR: Could not remove locks after failed execution"
+
+// Updates the state of the given event. Used for a folding loop in execute
+let update_all (relations: Set<Relation>) (send_func: SendFunc<Repository>)
+        (state: Repository) : bool * Repository=
+    let update (reltype, event) (can_continue, updated_repo) : bool * Repository =
+        if can_continue then
+            match reltype with
+            | Condition -> // We check backwards, so nothing here
+                (can_continue, updated_repo)
+            | Exclusion ->
+                let (new_repo, resp, status) = send (SetIncluded(event, false)) send_func updated_repo
+                if check_if_positive status
+                then (true, new_repo)
+                else (false, updated_repo)
+            | Response  ->
+                let (new_repo, resp, status) = send (SetPending(event, true)) send_func updated_repo
+                if check_if_positive status
+                then (true, new_repo)
+                else (false, updated_repo)
+            | Inclusion ->
+                let (new_repo, resp, status) = send (SetIncluded(event, true)) send_func updated_repo
+                if check_if_positive status
+                then (true, new_repo)
+                else (false, updated_repo)
+        else
+            (can_continue, updated_repo)
+
+    Set.foldBack update relations (true, state)
+
+// Attempts to unlock all the given events
+let unlock_all (events: Set<EventName>) (send_func: SendFunc<Repository>)
+        (state: Repository) : bool * Repository=
+    // Try to unlock as much as possible, even if it fails
+    let unlock event (succesful, unlocked_repo) =
+        let (new_repo, resp, status) = send (Unlock(event)) send_func unlocked_repo
+        if succesful && (check_if_positive status) then
+            (true, new_repo)
+        else
+            (false, new_repo)
+
+    Set.foldBack unlock events (true, state)
+
 /// Executes and returns the given event if the given user has the required role
 let execute (eventName : EventName) (userName : UserName)
         (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
@@ -139,72 +203,18 @@ let execute (eventName : EventName) (userName : UserName)
                 Set.add event acc
             let necessary_from_relations = Set.filter onlyNecessary event.fromRelations
             let necessary_relations = Set.union necessary_from_relations event.toRelations
-            let lockSet = Set.fold setSplit Set.empty necessary_relations
-
-            // Try to lock them all
-            let lockMany (x : Set<EventName>) (repo: Repository) : bool * Repository =
-                let inner event (can_continue, locked_events, locked_state) =
-                    if can_continue then
-                        let (state, resp, status) = send (Lock(event)) sendFunc locked_state
-                        if check_if_positive status
-                        then (status, Set.add x acc)
-                        else (false, acc)
-                    else s
-
-                let (status, unlockSet, updated_state) = Set.foldBack inner lockSet (true, Set.empty, repo)
-                if status
-                then true
-                else
-                    let lock_succesful event =
-                        let (state, resp, status) = send (Lock(event)) sendFunc repository
-                        check_if_positive status
-                    if Set.forall unlockSet
-                    then false
-                    else failwith "ERROR: Could not remove locks after failed execution"
-
-            let (succesfully_locked, locked_state) = lockMany lockSet
-            if succesfully_locked
-            then
-                let updateState x y =
-                    let stat, repo = y
-                    if stat
-                    then
-                        let typ, event = x
-                        match typ with
-                        | Condition -> y
-                        | Exclusion ->
-                            let RR = send (SetIncluded(event, false)) sendFunc repo
-                            if check_if_positive RR
-                            then
-                                let newRepository, _, _ = RR
-                                (true, newRepository)
-                            else (false, repo)
-                        | Response  ->
-                            let RR = send (SetPending(event, true)) sendFunc repo
-                            if check_if_positive RR
-                            then
-                                let newRepository, _, _ = RR
-                                (true, newRepository)
-                            else (false, repo)
-                        | Inclusion ->
-                            let RR = send (SetIncluded(event, true)) sendFunc repo
-                            if check_if_positive RR
-                            then
-                                let newRepository, _, _ = RR
-                                (true, newRepository)
-                            else (false, repo)
-                    else y
-
-                let state, repository = Set.foldBack updateState event.toRelations (true, repository)
-                if state
-                then
-                    if Set.forall (fun x -> check_if_positive (send (Unlock(x)) sendFunc repository)) lockSet
-                    then
+            let events_to_lock = Set.fold setSplit Set.empty necessary_relations
+            let (succesfully_locked, locked_state) = lock_all events_to_lock sendFunc repository
+            if succesfully_locked then
+                let (succesfully_updated, updated_repo) = update_all event.toRelations sendFunc locked_state
+                if succesfully_updated then
+                    let (succesfully_unlocked, unlocked_repo) = unlock_all events_to_lock sendFunc updated_repo
+                    if succesfully_unlocked then
                         let inner (event : Event) : UpdateEventResult =
                             EventOk({event with executed = true; pending = false})
                         update_inner_event eventName inner repository
                     else Error("ERROR: It's not possible to unlock all events!!!")
-                else Error("ERROR: It's not possible to chenge all the states!!!")
+                else Error("ERROR: It's not possible to change all the states!!!")
             else LockConflict
         else Unauthorized
     else NotExecutable
@@ -277,13 +287,13 @@ let unlock_event (eventName : EventName) (repository : Repository) : Result =
 
 /// Removes given relation form given event and returns the result
 let remove_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    if check_if_positive (send (RemoveFromRelation(toEventName, relations, fromEvent)) sendFunc repository)
-    then
+    let (state, resp, status) = send (RemoveFromRelation(toEventName, relations, fromEvent)) sendFunc repository
+    if check_if_positive status then
         let inner (event : Event) : UpdateEventResult =
             if Set.contains (relations, toEventName) event.toRelations
             then EventOk({event with toRelations = Set.remove (relations, toEventName) event.toRelations})
             else EventErr(MissingRelation)
-        update_inner_event fromEvent inner repository
+        update_inner_event fromEvent inner state
     else LockConflict
 
 /// Removes given relation form given event and returns the result
@@ -294,28 +304,40 @@ let remove_relation_from (fromEvent : EventName) (relations : RelationType) (toE
         else EventErr(MissingRelation)
     update_inner_event toEvent inner repository
 
-/// Deletes given event and returns it if its susesful
+/// Attempts to delete the given event and returns whether it was succesful
 let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     //Dummy
     let workflow, eName = eventName
     let event = get_event eventName repository
-    printfn "Send: remove event: %s from wrokflow: %s" eName workflow
-    if Set.forall (fun x ->
-        let typ, event' = x
-        check_if_positive (send (RemoveToRelation(eventName, typ, event')) sendFunc repository)) event.toRelations
-    then
-        if Set.forall (fun x ->
-            let typ, event' = x
-            check_if_positive (send (RemoveFromRelation(eventName, typ, event')) sendFunc repository)) event.fromRelations
-        then
+    printfn "Removing event '%s' from workflow '%s'..." eName workflow
+
+    let remove_to_relation (reltype, target) (succesful, removed_state) =
+        let (new_state, resp, status) = send (RemoveToRelation(eventName, reltype, target)) sendFunc removed_state
+        if succesful && (check_if_positive status) then (true, new_state)
+        else (false, new_state)
+
+    let (succesfully_removed_to_relations, removed_to_state) =
+        Set.foldBack remove_to_relation event.toRelations (true, repository)
+
+    if succesfully_removed_to_relations then
+
+        let remove_from_relation (reltype, target) (succesful, removed_state) =
+            let (new_state, resp, status) = send (RemoveFromRelation(eventName, reltype, target)) sendFunc removed_state
+            if succesful && (check_if_positive status) then (true, new_state)
+            else (false, new_state)
+
+        let (succesfully_removed_from_relations, removed_state) =
+            Set.foldBack remove_from_relation event.fromRelations (true, removed_to_state)
+
+        if succesfully_removed_from_relations then
             let workflow, name = eventName
+
             let inner (x : Map<string, bool*Event>) : UpdateMapResult =
                 match Map.tryFind name x with
-                    | Some(_) ->
-                        MapOk(Map.remove name x)
-                    | None -> MapErr(MissingEvent)
+                | Some(_)   -> MapOk(Map.remove name x)
+                | None      -> MapErr(MissingEvent)
 
-            update_inner_map workflow inner repository
+            update_inner_map workflow inner removed_state
         else LockConflict
     else LockConflict
 
