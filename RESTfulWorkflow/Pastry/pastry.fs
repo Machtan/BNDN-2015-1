@@ -80,7 +80,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
 
 // Replies to a http request
 let reply (response: HttpListenerResponse) (answer: string) (status: int) (reason: string) =
-    printfn " --> %d %s [%s]" status reason answer
+    printfn "REPLY: --> %d | %s | %s" status reason answer
     // Set HTTP statuscode and reason (e.g., 200 OK)
     response.StatusCode <- status
     response.StatusDescription <- reason
@@ -102,7 +102,7 @@ let send_backup_state (node: Node) (state_msg: string) =
     let neighbor = Map.foldBack folder node.leaves node.minleaf
     if neighbor = node.guid then // No smaller leaves
         // Send it to the highest leaf
-        printfn "PASTRY: No other leaves, backup delayed..."
+        printfn "BACKUP: No other leaves, backup delayed..."
     else
         let address =
             match Map.tryFind neighbor node.leaves with
@@ -112,9 +112,9 @@ let send_backup_state (node: Node) (state_msg: string) =
                 failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
         match send_message address Backup state_msg neighbor with
         | None ->
-            printfn "PASTRY: No reply for backup: Handle node failure?"
+            printfn "BACKUP: No reply for backup: Handle node failure?"
         | Some(resp, status) ->
-            printfn "PASTRY: Backed up succesfully!"
+            printfn "BACKUP: Backed up succesfully!"
 
 // Adds the given node as a neighbor if it makes sense (I'm not using this ATM)
 let try_add_neighbor (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
@@ -254,12 +254,14 @@ let handle_join (node: Node) (message: string): Node =
         }
     let notify guid address =
         match send_message address Update (serialize updated_node) guid with
-        | Some(_) -> ()
-        | None -> printfn "PASTRY: Failed to notify %A at '%s' of update..." guid address
+        | Some(_) ->
+            ()
+        | None ->
+            printfn "JOIN: Failed to notify %A at '%s' of update..." guid address
     Map.iter notify updated_node.leaves
     //Map.iter notify updated_node.neighbors // We don't remove these properly, so...
     List.iter (fun map_level -> Map.iter notify map_level) updated_node.routing_table
-    printfn "PASTRY: State after joining: %A" updated_node
+    printfn "JOIN: State after joining: %A" updated_node
     updated_node
 
 // Handles that the node closest to this on the 'bigger' side has died
@@ -292,14 +294,14 @@ let find_watched_neighbor (node: Node) = find_right_leaf node
 // Handles that a node in the leaf set has failed
 let handle_dead_leaf<'a> (node: Node) (leaf: GUID) (route_func: RouteFunc<'a>)
         (inter: PastryInterface<'a>): Node * 'a =
-    printfn "PASTRY: Removing dead leaf %s from leaf set" (serialize_guid leaf)
+    printfn "DEAD: Removing dead leaf %s from leaf set" (serialize_guid leaf)
     let leaves = Map.remove leaf node.leaves
     // Find out what to do with the death
     let watched = find_watched_neighbor node
-    printfn "%s" <| String.replicate 50 "="
-    printfn "Watched neighbor of %s: %s" (string node.guid) (string watched)
-    printfn "min, max, leaves: %s | %s | %A" (string node.minleaf) (string node.maxleaf) node.leaves
-    printfn "%s" <| String.replicate 50 "="
+    //printfn "%s" <| String.replicate 50 "="
+    //printfn "Watched neighbor of %s: %s" (string node.guid) (string watched)
+    //printfn "min, max, leaves: %s | %s | %A" (string node.minleaf) (string node.maxleaf) node.leaves
+    //printfn "%s" <| String.replicate 50 "="
 
     let node_with_leaves = { node with leaves = leaves; }
     let (updated_node, updated_state) =
@@ -349,7 +351,7 @@ let update_node<'a> (node: Node) (new_node: Node) (inter: PastryInterface<'a>)
     if is_left_leaf || is_right_leaf then
         let own_id = serialize_guid node.guid
         let other_id = serialize_guid new_node.guid
-        printfn "PASTRY: MIGRATE: The new node %s is my neighbor!" other_id
+        printfn "MIGRATE: The new node %s is my neighbor!" other_id
         let path = sprintf "migrate/%s/%s" own_id other_id
         let (state', resp, status) = inter.handle path "PUT" "" inter.send inter.state
         node_with_leaves, state'
@@ -360,7 +362,8 @@ let update_node<'a> (node: Node) (new_node: Node) (inter: PastryInterface<'a>)
 let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: GUID)
         (route_func: RouteFunc<'a>) (inter: PastryInterface<'a>)
         : Node * 'a * (string * int) =
-    printfn "PASTRY: Handling '%A' message '%s'..." typ message
+    printfn "HANDLE: | Handling '%A'" typ
+    printfn "HANDLE: | '%s'" message
     match typ with
     | Join -> // A node is requesting to join, and this is the one with the nearest GUID
         let firstsep = message.IndexOf(SEPARATOR)
@@ -376,26 +379,26 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
 
     | Update -> // The node is notified of a new node joining
         let (updated_node, updated_state) = update_node node (deserialize message) inter
-        printfn "PASTRY: State after update: %A" updated_node
+        //printfn "PASTRY: State after update: %A" updated_node
         updated_node, updated_state, ("Updated", 200)
 
     | Resource(path, meth) -> // Request for a resource here
-        printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
+        //printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
         let (state', resp, status) = inter.handle path meth message inter.send inter.state
         node, state', (resp, status)
 
     | DeadNode -> // Something has died
-        printfn "PASTRY: Notified that %s has died" (serialize_guid key)
+        printfn "DEAD: Notified that %s has died" (serialize_guid key)
         let dead =
             match deserialize_guid message with
             | Some(g) -> g
             | None -> failwith "Could not deserialize dead node GUID %s" message
 
         let watched = find_watched_neighbor node
-        printfn "%s" <| String.replicate 50 "="
-        printfn "Watched neighbor of %s: %s" (string node.guid) (string watched)
-        printfn "min, max, leaves: %s | %s | %A" (string node.minleaf) (string node.maxleaf) node.leaves
-        printfn "%s" <| String.replicate 50 "="
+        //printfn "%s" <| String.replicate 50 "="
+        //printfn "Watched neighbor of %s: %s" (string node.guid) (string watched)
+        //printfn "min, max, leaves: %s | %s | %A" (string node.minleaf) (string node.maxleaf) node.leaves
+        //printfn "%s" <| String.replicate 50 "="
 
         if dead = watched then
             printfn "DEAD: It's the one I'm watching!"
@@ -404,7 +407,7 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
                 let (node', state') = handle_dead_leaf node dead route_func inter
                 node', state', ("Handled!", 200)
             | None ->
-                printfn "PASTRY: Already handled..."
+                printfn "DEAD: Already handled..."
                 node, inter.state, ("Already handled", 200)
         else
             // Route it a little to the left
@@ -416,10 +419,10 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
                 else
                     acc
             let dst = Map.foldBack folder node.leaves node.minleaf
-            printfn "PASTRY: Forwarding 'dead' call to %s" (serialize_guid dst)
+            printfn "DEAD: Forwarding 'dead' call to %s" (serialize_guid dst)
             route_func node DeadNode message dst inter
     | Backup ->
-        printfn "PASTRY: Backup received!"
+        printfn "BACKUP: Backup received!"
         { node with backup = message; }, inter.state, ("Backed up!", 200)
 
     | GetState | Ping ->
@@ -452,7 +455,7 @@ let rec route_leaf (node: Node) (typ: MessageType) (msg: string) (key: GUID)
 // Routes a message somewhere
 let rec route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
         (inter: PastryInterface<'a>) : Node * 'a * (string * int) =
-    printfn "PASTRY: Routing '%A' message towards '%A'" typ key
+    printfn "ROUTE: Routing '%A' message towards '%A'" typ key
     let (node', state', message) =
         match typ with // This is actually okay since the nodes contain no strings
         | Join ->
@@ -479,11 +482,11 @@ let rec route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
     let valid_leaf = (valid_min_leaf node' key) || (valid_max_leaf node' key)
     // Within leaf set
     if valid_leaf || Map.isEmpty node'.leaves || (key = node'.guid) then
-        printfn "PASTRY: Found target within leaf set!"
+        //printfn "PASTRY: Found target within leaf set!"
         route_leaf node' typ message key route updated_inter
     else
-        printfn "PASTRY: Checking routing table..."
-        printfn "PASTRY: Actually just using the leaf set ATM..."
+        //printfn "PASTRY: Checking routing table..."
+        //printfn "PASTRY: Actually just using the leaf set ATM..."
         // Same check as above... for laziness
         route_leaf node' typ message key route updated_inter
 
@@ -493,7 +496,6 @@ let try_forward_pastry<'a> (node: Node) (cmd_str: string) (dst_str: string)
         : InterpretResult<'a> =
     match deserialize_guid dst_str with
     | Some(guid) ->
-        printfn "%A" route
         match cmd_str with
         | "join" ->
             reply response "Forward attempted!" 200 "Ok"
@@ -562,7 +564,7 @@ let ping_neighbor<'a> (node: Node) (inter: PastryInterface<'a>) : Node * 'a =
     printfn "PING: -> %s" (serialize_guid neighbor)
     if neighbor = node.guid then // No smaller leaves
         // Send it to the highest leaf
-        printfn "PASTRY: No other leaves, ping delayed..."
+        printfn "PING: No other leaves, ping delayed..."
         node, inter.state
     else
         let address =
@@ -573,7 +575,7 @@ let ping_neighbor<'a> (node: Node) (inter: PastryInterface<'a>) : Node * 'a =
                 failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
         match send_message address Ping "" neighbor with
         | None ->
-            printfn "PASTRY: Neighbor is dead, do something!"
+            printfn "PING: Neighbor is dead, do something!"
             handle_dead_leaf node neighbor route inter
         | Some(resp, status) ->
             node, inter.state
@@ -605,9 +607,7 @@ let start_listening<'a when 'a: equality> (node: Node) (inter_arg: PastryInterfa
         let body =
             use is = new System.IO.StreamReader(request.InputStream, request.ContentEncoding)
             is.ReadToEnd()
-        printfn "Path: %s" path
         let parts = split (path.[1..]) '/' // That annoying first slash...
-        printfn "Parts: %A" parts
         // Now interpret what was received
         let result =
             match parts with
