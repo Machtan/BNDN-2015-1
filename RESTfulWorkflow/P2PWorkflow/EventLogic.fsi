@@ -15,7 +15,7 @@ val get_event_state:            EventName -> Repository -> EventState
 /// Check if given event have one of given roles
 val check_roles:                EventName -> Roles -> Repository -> bool
 /// Checks if given event is executeble
-val check_if_executeble:        EventName -> SendFunc<Repository> -> Repository -> bool
+val check_if_executeble:        EventName -> UserName -> SendFunc<Repository> -> Repository -> ExecutableResult
 /// Checks if given event is lock'et
 val check_if_locked:            EventName -> Repository -> bool
 /// Checks if given event is executed / excluded

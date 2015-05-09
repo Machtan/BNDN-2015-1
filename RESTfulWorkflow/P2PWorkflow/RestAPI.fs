@@ -36,12 +36,21 @@ let getIncluded event workflowName repo : ResourceResponse<Repository>  =
         | None ->  (repo,"Event could not be received.", statusCode)
 
 // Gets the 'executable' state of an event
-let getExecutable event workflowName repo sendfunc  : ResourceResponse<Repository> =
-    let response = getEvent workflowName event repo
-    let (eventState,message,statusCode) = response
+let getExecutable (event: string) (workflow: string) (user: string)
+        (sendfunc: SendFunc<Repository>) (repo: Repository)
+        : ResourceResponse<Repository> =
+    let (eventState, _, statusCode) = getEvent workflow event repo
     match (eventState) with
-        | Some(evState) ->  (repo,string (check_if_executeble (workflowName,event) sendfunc repo), statusCode)
-        | None ->  (repo,"Event could not be received.", statusCode)
+    | Some(_) ->
+        match check_if_executeble (workflow, event) user sendfunc repo with
+        | ExecutableResult.Executable ->
+            (repo, "true", 200)
+        | ExecutableResult.Unauthorized ->
+            (repo, "'%s' is not authorized to execute this", 402)
+        | ExecutableResult.NotExecutable ->
+            (repo, "false", 200)
+    | None ->
+        (repo, "Event could not be received.", statusCode)
 
 // Gets the 'pending' state of an event
 let getPending event workflowName repo : ResourceResponse<Repository> =
@@ -261,7 +270,7 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         | err ->
             repo, (sprintf "Got error %A" err), 400
     | "GET", "executable" ->
-        getExecutable event_name workflow_name repo sendFunc
+        getExecutable event_name workflow_name message sendFunc repo
     | _ ->
         (repo, "Unknown event command gotten!", 400)
 

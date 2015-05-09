@@ -78,25 +78,39 @@ let check_roles (eventName : EventName) (roles : Roles) (repository : Repository
     else true
 
 /// Checks if given event is executeble
-let check_if_executeble (eventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : bool =
-    let event = get_event eventName repository
+let check_if_executeble (eventName : EventName) (user: string)
+        (sendFunc : SendFunc<Repository>) (repository : Repository)
+        : ExecutableResult =
+    let _, workflow_name = eventName
+    // Check if the user can actually execute this
+    let (_, answer, status) = send (GetUserRoles(user, workflow_name)) sendFunc repository
+    let roles =
+        if check_if_positive status then
+            Set.ofArray (answer.Split ',')
+        else
+            Set.empty
+    if check_roles eventName roles repository then
+        let event = get_event eventName repository
 
-    let onlyConditions x =
-        let typ, _ = x
-        typ = Condition
+        let onlyConditions x =
+            let typ, _ = x
+            typ = Condition
 
-    let checkConditions x =
-        let typ, fromEventName = x
-        let fromWorkflow, fromName = fromEventName
-        let (_, resp, status) = send (GetIfCondition(eventName)) sendFunc repository
-        check_if_positive_bool resp status
+        let checkConditions x =
+            let typ, fromEventName = x
+            let fromWorkflow, fromName = fromEventName
+            let (_, resp, status) = send (GetIfCondition(eventName)) sendFunc repository
+            check_if_positive_bool resp status
 
-    if event.included = true
-    then
-        let fromRelations = Set.filter onlyConditions event.fromRelations
-        Set.forall checkConditions fromRelations
-    else false
-
+        if event.included then
+            let fromRelations = Set.filter onlyConditions event.fromRelations
+            if Set.forall checkConditions fromRelations then
+                ExecutableResult.Executable
+            else
+                ExecutableResult.NotExecutable
+        else
+            ExecutableResult.NotExecutable
+    else ExecutableResult.Unauthorized
 
 /// Checks if given event is lock'et
 let check_if_locked (eventName : EventName) (repository : Repository) : bool =
@@ -187,43 +201,42 @@ let unlock_all (events: Set<EventName>) (send_func: SendFunc<Repository>)
 /// Executes and returns the given event if the given user has the required role
 let execute (eventName : EventName) (userName : UserName)
         (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    if check_if_executeble eventName sendFunc repository
-    then
-        let workflow, _ = eventName
-        let _, answer, _ = send (GetUserRoles(userName, workflow)) sendFunc repository
-        let usersRoles = Set.ofArray (answer.Split ',')
-        if check_roles eventName usersRoles repository
-        then
-            let event = get_event eventName repository
-            // Find out which events need to be locked before executing this one
-            let onlyNecessary x =
-              let typ, _ = x
-              typ = Condition || typ = Exclusion
-            let setSplit acc x =
-                let _, event = x
-                Set.add event acc
-            let necessary_from_relations = Set.filter onlyNecessary event.fromRelations
-            let necessary_relations = Set.union necessary_from_relations event.toRelations
-            let events_to_lock = Set.fold setSplit Set.empty necessary_relations
-            let (succesfully_locked, locked_state) = lock_all events_to_lock sendFunc repository
-            if succesfully_locked then
-                let (succesfully_updated, updated_repo) =
-                    update_all event.toRelations sendFunc locked_state
-                if succesfully_updated then
-                    let (succesfully_unlocked, unlocked_repo) =
-                        unlock_all events_to_lock sendFunc updated_repo
-                    if succesfully_unlocked then
-                        // Log this shit!
-                        let (logged_repo, resp, status) =
-                            send (Log(eventName, DateTime.Now, userName)) sendFunc unlocked_repo
-                        let inner (event : Event) : UpdateEventResult =
-                            EventOk({event with executed = true; pending = false})
-                        update_inner_event eventName inner logged_repo
-                    else Error("ERROR: It's not possible to unlock all events!!!")
-                else Error("ERROR: It's not possible to change all the states!!!")
-            else LockConflict
-        else Unauthorized
-    else NotExecutable
+    match check_if_executeble eventName userName sendFunc repository with
+    | ExecutableResult.Executable ->
+        let event = get_event eventName repository
+        // Find out which events need to be locked before executing this one
+        let onlyNecessary x =
+          let typ, _ = x
+          typ = Condition || typ = Exclusion
+        let setSplit acc x =
+            let _, event = x
+            Set.add event acc
+        let necessary_from_relations = Set.filter onlyNecessary event.fromRelations
+        let necessary_relations = Set.union necessary_from_relations event.toRelations
+        let events_to_lock = Set.fold setSplit Set.empty necessary_relations
+        let (succesfully_locked, locked_state) = lock_all events_to_lock sendFunc repository
+        if succesfully_locked then
+            let (succesfully_updated, updated_repo) =
+                update_all event.toRelations sendFunc locked_state
+            if succesfully_updated then
+                let (succesfully_unlocked, unlocked_repo) =
+                    unlock_all events_to_lock sendFunc updated_repo
+                if succesfully_unlocked then
+                    // Log this shit!
+                    let (logged_repo, resp, status) =
+                        send (Log(eventName, DateTime.Now, userName)) sendFunc unlocked_repo
+                    let inner (event : Event) : UpdateEventResult =
+                        EventOk({event with executed = true; pending = false})
+                    update_inner_event eventName inner logged_repo
+                else Error("ERROR: It's not possible to unlock all events!!!")
+            else Error("ERROR: It's not possible to change all the states!!!")
+        else LockConflict
+
+    | ExecutableResult.NotExecutable ->
+        Result.NotExecutable
+
+    | ExecutableResult.Unauthorized ->
+        Result.NotExecutable
 
 /// Adds given roles to given event and returns the result
 let add_event_roles (eventName : EventName) (roles : Roles) (repository : Repository) : Result =

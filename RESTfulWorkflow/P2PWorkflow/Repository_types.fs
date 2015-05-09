@@ -93,6 +93,11 @@ type Result =
     | LockConflict
     | Error of string
 
+type ExecutableResult =
+| Executable
+| Unauthorized
+| NotExecutable
+
 type Message =
     | GetIfCondition            of EventName
     | Lock                      of EventName
