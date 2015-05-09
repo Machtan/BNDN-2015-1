@@ -24,7 +24,9 @@ let getExecuted event workflowName repo : ResourceResponse<Repository> =
     let response = getEvent workflowName event repo
     let (eventState,message,statusCode) = response
     match (eventState) with
-        | Some(evState) -> (repo,(string)evState.executed, statusCode)
+        | Some(evState) ->
+            let resp = if evState.executed then "true" else "false"
+            (repo, resp, statusCode)
         | None ->  (repo,"Event could not be received.", statusCode)
 
 // Gets the 'included' state of an event
@@ -32,7 +34,9 @@ let getIncluded event workflowName repo : ResourceResponse<Repository>  =
     let response = getEvent workflowName event repo
     let (eventState,message,statusCode) = response
     match (eventState) with
-        | Some(evState) -> (repo,(string)evState.included, statusCode)
+        | Some(evState) ->
+            let resp = if evState.included then "true" else "false"
+            (repo, resp, statusCode)
         | None ->  (repo,"Event could not be received.", statusCode)
 
 // Gets the 'executable' state of an event
@@ -57,7 +61,9 @@ let getPending event workflowName repo : ResourceResponse<Repository> =
     let response = getEvent workflowName event repo
     let (eventState,message,statusCode) = response
     match (eventState) with
-        | Some(evState) -> (repo,(string)evState.pending, statusCode)
+        | Some(evState) ->
+            let resp = if evState.pending then "true" else "false"
+            (repo, resp, statusCode)
         | None ->  (repo,"Event could not be received.", statusCode)
 
 // Attempts to execute the given event
