@@ -12,21 +12,21 @@ let mutable role = "Student"
 let mutable baseUrl = "http://localhost:8080/Test"
 
 // HTTPREQUEST with a given httpverb that returns an option of None on error and a response string on success
-let HTTPRequestUpload (url : string) verb = 
+let HTTPRequestUpload (url: string) (meth: string) =
     try
-        use w = new System.Net.WebClient () 
-        Some(w.UploadString(url,verb, role))
+        use w = new System.Net.WebClient ()
+        Some(w.UploadString(url, meth, role))
     with
         | ex -> None
 
 // HTTPREQUEST GET returns an option of None on error and a response string on success
-let HTTPRequestDownload (url : string) = 
+let HTTPRequestDownload (url : string) =
     try
-        use w = new System.Net.WebClient () 
+        use w = new System.Net.WebClient ()
         Some(w.DownloadString(url+"?role=" + role))
     with
         | ex -> None
-          
+
 //Converts a list of eventnames to a list of the EventStatus type
 let rec stringListToEventStatus eventsList =
     match (eventsList) with
@@ -42,7 +42,7 @@ let GetAllEvents baseUrl =
         Some(stringListToEventStatus(split(eventsResponse.Value) ' '))
 
 //Gets the status of a particular event
-let eventStatus baseUrl eventName = 
+let eventStatus baseUrl eventName =
     let executed = HTTPRequestDownload (baseUrl + "/" + eventName + "/executed")
     let executable = HTTPRequestDownload (baseUrl + "/" + eventName + "/executable")
     let pending = HTTPRequestDownload (baseUrl + "/" + eventName + "/pending")
@@ -54,7 +54,7 @@ let eventStatus baseUrl eventName =
 //Write out the status of a list of EventStatus
 let rec writeOutEventStatus events baseUrl =
     match (events) with
-    | (eventName, executed,pended,executeable) :: xs -> 
+    | (eventName, executed,pended,executeable) :: xs ->
                     match ((eventName, executed,pended,executeable)) with
                     | (eventName, false,false,true)  ->  printfn "%s   EXECUTABLE" eventName
                     | (eventName, false,true,true)  ->  printfn "! %s   EXECUTABLE" eventName
@@ -67,10 +67,10 @@ let rec writeOutEventStatus events baseUrl =
     | _ -> []
 
 //Writes the status of each event to the console and returns a list containing only the events that was responsive.
-let rec getStatusAndRemovefaulty events baseUrl = 
+let rec getStatusAndRemovefaulty events baseUrl =
     let rec getValidEvents ev =
         match (ev) with
-            | (eventName, executed,pended,executeable) :: xs -> 
+            | (eventName, executed,pended,executeable) :: xs ->
                         let eventStatusResponse = eventStatus baseUrl eventName
                         if (eventStatusResponse.IsSome) then
                             let (eventName, executed,pended, executeable) = eventStatusResponse.Value
@@ -81,7 +81,7 @@ let rec getStatusAndRemovefaulty events baseUrl =
     writeOutEventStatus (List.sortBy (fun k -> let (eventName, executed,pended,executeable) = k
                                                not pended) (getValidEvents events)) baseUrl
 //Prompts the user to enter the BaseURL
-let rec selectRole n = 
+let rec selectRole n =
     printfn "Whats your role?"
     printf "-> "
     match(Console.ReadLine()) with
@@ -89,11 +89,11 @@ let rec selectRole n =
         | v -> v
 
 //Prompts the user to enter the BaseURL
-let selectBaseUrl n = 
+let selectBaseUrl n =
     printfn "Please provide BaseURL and press enter:"
     Console.ReadLine()
 
-//Mainloop, covers event selection and exchanging information with the events.    
+//Mainloop, covers event selection and exchanging information with the events.
 let rec mainLoop (events : eventStatus list) =
     printfn "Actions:"
     printfn "1 -> Get all events"
@@ -108,11 +108,11 @@ let rec mainLoop (events : eventStatus list) =
              printfn "Downloading the list of events..."
              let eventsResponse = GetAllEvents baseUrl
              if (eventsResponse.IsNone) then
-                printfn "Program failed to get a list of events. Connection may be at fault."  
+                printfn "Program failed to get a list of events. Connection may be at fault."
              if (eventsResponse.IsSome) then
                 printfn "%s downloaded." (eventsResponse.Value.Length.ToString())
                 mainLoop eventsResponse.Value
-             else                
+             else
                 mainLoop events
     | "2" -> //Connect an event
              printfn "Please provide event name:"
@@ -129,13 +129,13 @@ let rec mainLoop (events : eventStatus list) =
                     printfn "IsPending: %s" (pended.ToString())
                     printfn "IsExecuteable: %s" (executeable.ToString())
                     if (executed) then
-                        printfn "Event has already been executed, so it cant be executed."                   
+                        printfn "Event has already been executed, so it cant be executed."
                     else
                         let response = HTTPRequestUpload (baseUrl + "/" + eventName + "/executed") "PUT"
                         if (response.IsNone) then
-                            printfn "Program failed to issue the command to the event. Connection may be at fault."                             
-                        if (response.IsSome) then 
-                            response.Value |> printfn "Success! Response: %s" 
+                            printfn "Program failed to issue the command to the event. Connection may be at fault."
+                        if (response.IsSome) then
+                            response.Value |> printfn "Success! Response: %s"
                     printfn "action completed"
                     mainLoop events
     | "3" -> baseUrl <- selectBaseUrl 0
@@ -148,18 +148,18 @@ let rec mainLoop (events : eventStatus list) =
     | "6" -> None //Exit program
     | _   -> None
 
- 
+
 
 //Provides the loop that allows the mainLoop to exit and rerequest the BaseURL.
-let rec outerLoop m = 
+let rec outerLoop m =
     let m = mainLoop []
     if (m.IsSome) then
       outerLoop m
-            
+
 
 //Entry point
 [<EntryPoint>]
-let rec main argv = 
+let rec main argv =
     printfn "Welcome to the testclient of the workflow client"
     Console.Title <- "Workflow test client"
     role <- selectRole 0 //Change role
@@ -167,4 +167,4 @@ let rec main argv =
     outerLoop None
     0
 
-        
+
