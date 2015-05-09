@@ -23,6 +23,11 @@ let check_workflow (wfName : WorkflowName) (repos : Repository) : bool =
 let get_workflow_events (wfName : WorkflowName) (repos : Repository) : (string list) option =
     Map.tryFind wfName repos.workflows
 
+let get_log (workflow : WorkflowName) (repository : Repository) : (string list) option  =
+    match Map.tryFind workflow repository.logs with
+    | Some(logs)    -> Some(logs)
+    | None          -> None
+    
 //Update
 
 /// Adds a given event to a given Workflow and returns the result
@@ -34,6 +39,17 @@ let add_event_to_workflow (event : EventName) (repo : Repository) : Repository o
         Some({repo with workflows = updated_workflows; })
     | None ->
         None
+
+/// Adds a log
+let add_log (event : EventName) (date : string) (userName : UserName) (repository : Repository) : Result =
+    let workflow, event = event
+    let log = sprintf "%s, %s, %s" event date userName
+    let logList = 
+        match Map.tryFind workflow repository.logs with
+        | Some(oldLogs) -> log::oldLogs
+        | None          -> log::[]
+    Ok({repository with logs = Map.add workflow logList repository.logs})
+
 
 //Delete
 

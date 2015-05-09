@@ -17,10 +17,14 @@ val check_workflow:             WorkflowName -> Repository -> bool
 /// Gets all events in given workflow
 val get_workflow_events:        WorkflowName -> Repository -> (string list) option
 
+val get_log:                    WorkflowName -> Repository -> (string list) option
+
 //Update
 
 /// Adds a given event to a given Workflow and returns the result
 val add_event_to_workflow: EventName -> Repository -> Repository option
+/// Adds a log
+val add_log: EventName -> string -> UserName -> Repository -> Result
 
 //Delete
 

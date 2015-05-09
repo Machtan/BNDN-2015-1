@@ -1,6 +1,7 @@
 ﻿module Repository_types
 
 open Pastry
+open System
 
 type UserName = string              // The name of a user
 type WorkflowName = string          // The name of a workflow
@@ -99,3 +100,4 @@ type Message =
     | AddFromRelation           of EventName * RelationType * EventName
     | RemoveFromRelation        of EventName * RelationType * EventName
     | RemoveToRelation          of EventName * RelationType * EventName
+    | Log                       of EventName * DateTime * UserName

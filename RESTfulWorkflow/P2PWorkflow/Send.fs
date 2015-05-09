@@ -1,5 +1,6 @@
 ﻿module Send
 
+open System
 open Pastry
 open Repository_types
 
@@ -81,6 +82,12 @@ let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Rep
         let url = sprintf "workflow/%s/%s/%s/to" from_wf from_event typ
         sendFunc url "DELETE" data repository
 
+    | Log(eventName, dateTime, userName) ->
+        let workflow, event = eventName
+        let data = sprintf "%s,%s" (string dateTime) userName
+        let url = sprintf "resource/log/%s/%s" workflow event
+        sendFunc url "DELETE" data repository
+
 /// tests if a ResourceResponse is positive
 let check_if_positive (status: int) : bool =
     if status >= 200 && status < 300
@@ -89,5 +96,5 @@ let check_if_positive (status: int) : bool =
 
 let check_if_positive_bool (resp: string) (status: int): bool =
     if check_if_positive status
-    then resp = "True"
+    then resp = "true"
     else false
