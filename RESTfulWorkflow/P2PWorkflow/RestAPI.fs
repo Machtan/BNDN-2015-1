@@ -352,7 +352,6 @@ let handle_partial_migration (meth: string) (from_guid: string) (to_guid: string
 // Handles requests related to logs
 let handle_log (workflow: string) (event: string) (meth: string) (data: string)
         (repo: Repository) : ResourceResponse<Repository> =
-    failwith "Not Implemented"
     match (meth, event) with
     | "PUT", "" ->
         (repo, "No event given for log request!", 400)
