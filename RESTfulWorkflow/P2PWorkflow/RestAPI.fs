@@ -349,6 +349,22 @@ let handle_partial_migration (meth: string) (from_guid: string) (to_guid: string
     | _ ->
         (initial_state, "Bad method used: migrate requires PUT!", 400)
 
+// Handles requests related to logs
+let handle_log (workflow: string) (event: string) (meth: string) (data: string)
+        (repo: Repository) : ResourceResponse<Repository> =
+    failwith "Not Implemented"
+    match (meth, event) with
+    | "PUT", "" ->
+        (repo, "No event given for log request!", 400)
+    | "PUT", ev ->
+        failwith "Not Implemented"
+    | "GET", "" ->
+        failwith "Not Implemented"
+    | "GET", ev ->
+        (repo, "ERROR: Event given for log get request", 400)
+    | _ ->
+        (repo, "ERROR: Bad log request method: " + meth, 400)
+
 // The actual resource handling function
 let handle_resource (path: string) (meth: string) (message: string) (send_func: SendFunc<Repository>)
         (initial_state: Repository) : ResourceResponse<Repository> =
@@ -380,6 +396,12 @@ let handle_resource (path: string) (meth: string) (message: string) (send_func: 
 
         | "migrate"::from_guid::to_guid::[] ->
             handle_partial_migration meth from_guid to_guid send_func initial_state
+
+        | "log"::workflow::event::[] ->
+            handle_log_event workflow event meth message initial_state
+
+        | "log"::workflow::[] ->
+            handle_log_event workflow "" meth message initial_state
 
         | _ ->
             printfn "Invalid path gotten: %s" path

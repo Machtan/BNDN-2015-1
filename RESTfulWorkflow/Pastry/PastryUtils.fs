@@ -205,6 +205,10 @@ let get_destination (resource_url: string list): Destination =
     | "workflow"::badly_formed_path ->
         let error_message = sprintf "UTILS: Bad workflow path '%s'. It should be on the form '/resource/workflow/<name>[/<eventname>/<attribute>]'" path
         Error(error_message, 400, "Invalid URL")
+    | "log"::workflow::[] ->
+        Ok(hash (sprintf "workflow/%s" workflow))
+    | "log"::workflow::event::[] ->
+        Ok(hash (sprintf "workflow/%s" workflow))
     | unknown_resource::whatever ->
         let error_message = sprintf "UTILS: Unknown resource type: '%s'" unknown_resource
         Error(error_message, 404, "Not found")
