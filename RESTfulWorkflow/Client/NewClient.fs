@@ -148,15 +148,15 @@ let show_status (state: State): State =
                         false::stats
                     | ConnectionError ->
                         stats
-                let event_status = List.rev (List.foldBack get_state attributes [])
+                let event_status = List.foldBack get_state attributes []
                 if not ((List.length event_status) = 4) then
                     printfn "! Could not get the state of '%s'" event
                 else
-                    let a = if event_status.[3] then "->" else "| "
-                    let b = if event_status.[2] then "x" else " "
-                    let c = if event_status.[1] then "!" else ""
-                    let d = if event_status.[0] then " " + event else "(" + event + ")"
-                    printfn "%s %s %s %s" a b c d
+                    let executable = if event_status.[3] then "->" else "| "
+                    let pending = if event_status.[1] then "!" else " "
+                    let executed = if event_status.[2] then "x" else pending
+                    let name = if event_status.[0] then " " + event else "(" + event + ")"
+                    printfn "%s %s %s" executable executed name
             List.iter print_event_status events
     state
 
