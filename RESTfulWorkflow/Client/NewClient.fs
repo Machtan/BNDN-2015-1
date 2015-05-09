@@ -1,9 +1,13 @@
 open System
+open System.Net
+open System.IO
+open System.Text
 
 // A result for the http functions
 type HttpResult<'a> =
 | Ok of string
-| Error of 'a
+| Error of string * int
+| ConnectionError
 
 // The state for the program
 type State = {
@@ -24,7 +28,21 @@ let upload (url: string) (meth: string) (data: string) : HttpResult<exn> =
         use w = new System.Net.WebClient ()
         Ok(w.UploadString(url, meth, data))
     with
-        | error -> Error(error)
+    | :? WebException as error ->
+        printfn "Got exception: %A" error
+        printfn "Error status: %A" error.Status
+        match error.Status with
+        | WebExceptionStatus.Success ->
+            let response: HttpWebResponse = error.Response :?> HttpWebResponse
+            let status: int = int response.StatusCode
+            printfn "Status code: %d" status
+            let message =
+                let encoding = Encoding.GetEncoding(response.ContentEncoding)
+                use is = new System.IO.StreamReader(response.GetResponseStream(), encoding)
+                is.ReadToEnd()
+            Error(message, status)
+        | _ ->
+            ConnectionError
 
 // Downloads a string
 let download (url : string) (data: string) : HttpResult<exn> =
@@ -33,17 +51,33 @@ let download (url : string) (data: string) : HttpResult<exn> =
         let full_url = sprintf "%s?data=%s" url data
         Ok(w.DownloadString(full_url))
     with
-        | error -> Error(error)
+    | :? WebException as error ->
+        printfn "Got exception: %A" error
+        printfn "Error status: %A" error.Status
+        match error.Status with
+        | WebExceptionStatus.Success ->
+            let response: HttpWebResponse = error.Response :?> HttpWebResponse
+            let status: int = int response.StatusCode
+            printfn "Status code: %d" status
+            let message =
+                let encoding = Encoding.GetEncoding(response.ContentEncoding)
+                use is = new System.IO.StreamReader(response.GetResponseStream(), encoding)
+                is.ReadToEnd()
+            Error(message, status)
+        | _ ->
+            ConnectionError
 
 // Attempts to get a list of the events of a given workflow
-let get_workflow_events (workflow: string) (peer_address: string)
-        : (string list) option =
-    let url = sprintf "%s/resource/workflow/%s" peer_address workflow
+let get_workflow_events (state: State) : (string list) option =
+    let url = sprintf "%s/resource/workflow/%s" state.peer state.workflow
     match download url "" with
     | Ok(resp) ->
         Some(split resp ',')
-    | Error(err) ->
-        printfn "! Error: %A" err
+    | Error(resp, status) ->
+        printfn "! Error: %d %s" status resp
+        None
+    | ConnectionError ->
+        printfn "! Connection Error!"
         None
 
 // Prints the logs of a given workflow if it exists
@@ -57,8 +91,10 @@ let print_logs (state: State): State =
             printfn "=== Logs ==="
             let logs = split resp '\n'
             List.iter (fun entry -> printfn "- %s" entry) logs
-    | Error(err) ->
-        printfn "! Could not get logs: '%A'" err
+    | Error(resp, status) ->
+        printfn "! Could not get logs: %d %s" status resp
+    | ConnectionError ->
+        printfn "! Connection Error!"
     state
 
 // Changes the active workflow
@@ -82,9 +118,52 @@ let debug_state (state: State): State =
     | Ok(message) ->
         printfn "> ==== DEBUG ===="
         printfn "%s" message
-    | Error(err) ->
-        printfn "! Error: %A" err
+    | Error(resp, status) ->
+        printfn "! Error: %d %s" status resp
+    | ConnectionError ->
+        printfn "! Connection Error!"
     state
+
+// Shows the state of the active workflow
+let show_status (state: State): State =
+    if state.workflow = "" then
+        printfn "! No active workflow, please change it first"
+    else
+        match get_workflow_events state with
+        | None ->
+            printfn "! Workflow '%s' not found!" state.workflow
+        | Some(events) ->
+            let print_event_status (event: string) =
+                let event_url = sprintf "%s/resource/workflow/%s/%s" state.peer state.workflow event
+                let attributes = ["included"; "pending"; "executed"; "executable"]
+                let get_state (attribute: string) (stats: bool list) =
+                    let url = event_url + "/" + attribute
+                    match download url state.user with
+                    | Ok(message) ->
+                        if message = "true" then
+                            true::stats
+                        else
+                            false::stats
+                    | Error(message, status) ->
+                        false::stats
+                    | ConnectionError ->
+                        stats
+                let event_status = List.rev (List.foldBack get_state attributes [])
+                if not ((List.length event_status) = 4) then
+                    printfn "! Could not get the state of '%s'" event
+                else
+                    let a = if event_status.[3] then "->" else "| "
+                    let b = if event_status.[2] then "x" else " "
+                    let c = if event_status.[1] then "!" else ""
+                    let d = if event_status.[0] then " " + event else "(" + event + ")"
+                    printfn "%s %s %s %s" a b c d
+            List.iter print_event_status events
+    state
+
+// Attemts to execute an event
+let execute_event (state: State): State =
+    state
+
 // Exits the program
 let exit_program (state: State) =
     printfn "> Goodbye..."
@@ -94,8 +173,10 @@ let exit_program (state: State) =
 let actions: (string * string * (State -> State)) list = [
     ("1", "Change workflow", change_workflow);
     ("2", "Change user", change_user);
-    ("3", "Show logs", print_logs);
-    ("4", "Debug", debug_state);
+    ("3", "Show status", show_status);
+    ("4", "Execute event", execute_event);
+    ("7", "Show logs", print_logs);
+    ("8", "Debug", debug_state);
     ("9", "Exit program", exit_program);
 ]
 
@@ -122,7 +203,7 @@ let ensure_peer_is_working (peer_address: string): bool =
     let url = sprintf "%s/pastry/ping/%s" peer_address DUMMY_GUID
     match upload url "PUT" "" with
     | Ok(resp) -> true
-    | Error(_) -> false
+    | _ -> false
 
 [<EntryPoint>]
 let main args =
