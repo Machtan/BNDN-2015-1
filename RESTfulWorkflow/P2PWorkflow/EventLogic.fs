@@ -1,5 +1,6 @@
 ﻿module EventLogic
 
+open System
 open Pastry
 open Repository_types
 open Send
@@ -206,13 +207,18 @@ let execute (eventName : EventName) (userName : UserName)
             let events_to_lock = Set.fold setSplit Set.empty necessary_relations
             let (succesfully_locked, locked_state) = lock_all events_to_lock sendFunc repository
             if succesfully_locked then
-                let (succesfully_updated, updated_repo) = update_all event.toRelations sendFunc locked_state
+                let (succesfully_updated, updated_repo) =
+                    update_all event.toRelations sendFunc locked_state
                 if succesfully_updated then
-                    let (succesfully_unlocked, unlocked_repo) = unlock_all events_to_lock sendFunc updated_repo
+                    let (succesfully_unlocked, unlocked_repo) =
+                        unlock_all events_to_lock sendFunc updated_repo
                     if succesfully_unlocked then
+                        // Log this shit!
+                        let (logged_repo, resp, status) =
+                            send (Log(eventName, DateTime.Now, userName)) sendFunc unlocked_repo
                         let inner (event : Event) : UpdateEventResult =
                             EventOk({event with executed = true; pending = false})
-                        update_inner_event eventName inner repository
+                        update_inner_event eventName inner logged_repo
                     else Error("ERROR: It's not possible to unlock all events!!!")
                 else Error("ERROR: It's not possible to change all the states!!!")
             else LockConflict
