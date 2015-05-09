@@ -30,7 +30,7 @@ let main args =
             events = Map.empty;
             users = Map.empty;
             workflows = Map.empty;
-            logs = [];
+            logs = Map.empty;
         }
 
         let handler = handle_resource // RestAPI

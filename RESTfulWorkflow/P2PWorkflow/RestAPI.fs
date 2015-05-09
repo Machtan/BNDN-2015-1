@@ -171,7 +171,7 @@ let deleteUser userName repo  : ResourceResponse<Repository> =
 
 // Creates a new repository
 let create_repository () : Repository =
-    { events = Map.empty; users = Map.empty; workflows = Map.empty; logs = []; }
+    { events = Map.empty; users = Map.empty; workflows = Map.empty; logs = Map.empty; }
 
 // Serializes the permissions of a given user for HTTP transfer
 let serialize_user_permissions (user: User) : string =
@@ -228,8 +228,8 @@ let handle_workflow (workflow: string) (meth: string) (data: string) (repo: Repo
 
 // Matches the given event and tries to handle the request
 let handle_event (workflow_name: string) (event_name: string) (attribute: string)
-        (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>)
-        : ResourceResponse<Repository> =
+        (meth: string) (message: string) (repo: Repository)
+        (sendFunc : SendFunc<Repository>) : ResourceResponse<Repository> =
     // Find the event in this repository if it exists
     match meth, attribute with
     | "POST", "" ->
@@ -246,17 +246,17 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         getIncluded event_name workflow_name repo
     | "PUT", "lock" ->
         match lock_event (workflow_name, event_name) repo with
-        | Ok(updated_state) ->
+        | Result.Ok(updated_state) ->
             updated_state, "Locked!", 200
-        | LockConflict ->
+        | Result.LockConflict ->
             repo, "Event already locked!", 400
-        | MissingEvent ->
+        | Result.MissingEvent ->
             repo, "Event not found", 404
         | err ->
             repo, (sprintf "Got error %A" err), 400
     | "PUT", "unlock" ->
         match unlock_event (workflow_name, event_name) repo with
-        | Ok(updated_state) ->
+        | Result.Ok(updated_state) ->
             updated_state, "Unlocked!", 200
         | err ->
             repo, (sprintf "Got error %A" err), 400
@@ -266,8 +266,8 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         (repo, "Unknown event command gotten!", 400)
 
 let handle_relation (workflow_name: string) (event_name: string) (reltype: string)
-        (con_str: string) (meth: string) (message: string) (repo: Repository) (sendFunc : SendFunc<'a>)
-        : ResourceResponse<Repository> =
+        (con_str: string) (meth: string) (message: string) (repo: Repository)
+        (sendFunc : SendFunc<Repository>) : ResourceResponse<Repository> =
     let args = split message ','
     if not ((List.length args) = 2) then
         let msg = sprintf "Invalid arguments: %A should be on the from <workflow>,<event>" message
@@ -357,9 +357,26 @@ let handle_log (workflow: string) (event: string) (meth: string) (data: string)
     | "PUT", "" ->
         (repo, "No event given for log request!", 400)
     | "PUT", ev ->
-        failwith "Not Implemented"
+        let args = split data ','
+        if not ((List.length args) = 2) then
+            (repo, "The arguments must be on the form <datetime>,<username>", 400)
+        else
+            let datetime = args.[0]
+            let user = args.[1]
+            let res = add_log (workflow, event) datetime user repo
+            match res with
+            | Result.Ok(updated_repo) ->
+                (updated_repo, "Log added!", 200)
+            | error ->
+                let msg = sprintf "Got an unsupported error type %A" error
+                (repo, msg, 400)
     | "GET", "" ->
-        failwith "Not Implemented"
+        match get_log workflow repo with
+        | Some(logs) ->
+            let resp = String.concat "\n" logs
+            (repo, resp, 200)
+        | None ->
+            (repo, "Workflow not found", 404)
     | "GET", ev ->
         (repo, "ERROR: Event given for log get request", 400)
     | _ ->
@@ -398,10 +415,10 @@ let handle_resource (path: string) (meth: string) (message: string) (send_func: 
             handle_partial_migration meth from_guid to_guid send_func initial_state
 
         | "log"::workflow::event::[] ->
-            handle_log_event workflow event meth message initial_state
+            handle_log workflow event meth message initial_state
 
         | "log"::workflow::[] ->
-            handle_log_event workflow "" meth message initial_state
+            handle_log workflow "" meth message initial_state
 
         | _ ->
             printfn "Invalid path gotten: %s" path
@@ -441,7 +458,7 @@ let KonoTestoKawaii =
         events = Map.ofList event_list;
         users = Map.ofList user_list;
         workflows = Map.ofList repo_list;
-        logs = [];
+        logs = Map.empty;
     }
 
     let resp = handle_user "Bob" "DELETE" test_repository
