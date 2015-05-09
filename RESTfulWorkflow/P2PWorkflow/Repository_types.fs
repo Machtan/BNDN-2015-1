@@ -53,7 +53,7 @@ type Repository = {
     users:  Map<string, User>;
     // workflow name: [event name]
     workflows: Map<string, string list>;
-    logs: string list;
+    logs: Map<WorkflowName, string list>;
 }
 
 // posible results when working with users
