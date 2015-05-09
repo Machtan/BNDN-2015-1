@@ -22,7 +22,11 @@ type EventState = {
 
 type User = UserName*((WorkflowName*Roles) list)  // The name of a user + witch roles he have it witch workflow
 type EventName = WorkflowName*string      // WorkflowName*EventName
-type Workflow = WorkflowName*(EventName list)  // The name of a workflow and the events it contain
+type Workflow = { // The name of a workflow and the events it contain
+    name: string;
+    events: string list;
+    logs: string list;
+}
 
 // Shemas used when finding all executabel event for a user
 type ExecutableInWorkflow = WorkflowName*(string*EventState list)
@@ -52,9 +56,8 @@ type Repository = {
     // workflow name: event name: (locked, state)
     events: Map<string, Map<string, bool*Event>>;
     users:  Map<string, User>;
-    // workflow name: [event name]
-    workflows: Map<string, string list>;
-    logs: Map<WorkflowName, string list>;
+    // workflow name: workflow
+    workflows: Map<string, Workflow>;
 }
 
 // posible results when working with users

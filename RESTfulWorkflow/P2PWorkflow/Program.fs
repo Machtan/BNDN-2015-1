@@ -26,11 +26,10 @@ let main args =
 
         let guid_str = pad_guid_with_zeroes guid
 
-        let state = {
+        let state: Repository = {
             events = Map.empty;
             users = Map.empty;
             workflows = Map.empty;
-            logs = Map.empty;
         }
 
         let handler = handle_resource // RestAPI

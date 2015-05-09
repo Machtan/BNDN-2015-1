@@ -171,7 +171,7 @@ let deleteUser userName repo  : ResourceResponse<Repository> =
 
 // Creates a new repository
 let create_repository () : Repository =
-    { events = Map.empty; users = Map.empty; workflows = Map.empty; logs = Map.empty; }
+    { events = Map.empty; users = Map.empty; workflows = Map.empty; }
 
 // Serializes the permissions of a given user for HTTP transfer
 let serialize_user_permissions (user: User) : string =
@@ -265,6 +265,7 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
     | _ ->
         (repo, "Unknown event command gotten!", 400)
 
+// Handles a request about the relation of an event
 let handle_relation (workflow_name: string) (event_name: string) (reltype: string)
         (con_str: string) (meth: string) (message: string) (repo: Repository)
         (sendFunc : SendFunc<Repository>) : ResourceResponse<Repository> =
@@ -370,7 +371,7 @@ let handle_log (workflow: string) (event: string) (meth: string) (data: string)
                 let msg = sprintf "Got an unsupported error type %A" error
                 (repo, msg, 400)
     | "GET", "" ->
-        match get_log workflow repo with
+        match get_logs workflow repo with
         | Some(logs) ->
             let resp = String.concat "\n" logs
             (repo, resp, 200)
@@ -423,44 +424,3 @@ let handle_resource (path: string) (meth: string) (message: string) (send_func: 
             printfn "Invalid path gotten: %s" path
             initial_state, "Invalid path", 400
     response
-
-let KonoTestoKawaii =
-    printfn "Hello migrator"
-
-    let user_list = [
-        ("Bob", ("Bob", [("Hospital", Set.ofList ["Medic"; "Patient"; "Janitor"])]));
-        ("Alice", ("Alice", [("Jail", Set.ofList ["Medic"; "Inmate"; "Head honcho"])]));
-    ]
-    let repo_list = [
-        ("Hospital", ["Enter"; "Leave"; "Surgery"; "Terrible accident"; "Zombie outbreak"]);
-        ("Kindergarten", ["Enter"; "Eat"; "Run with scissors"; "Play with mud"])
-    ]
-    let eve w n i p e r t =
-        let event = {
-            name = (w, n);
-            included = i;
-            pending = p;
-            executed = e;
-            toRelations = Set.ofList t;
-            fromRelations = Set.empty;
-            roles = Set.ofList r
-        }
-        (false, event)
-    let event_list = [
-        ("Hospital", Map.ofList [
-            ("Enter", eve "Hospital" "Enter" true true false ["Patient"] [(Condition,("Hospital", "Leave")); (Condition, ("Hospital", "Surgery"))]);
-            ("Surgery", eve "Hospital" "Surgery" false false true ["Medic"] [(Condition, ("Hospital", "Terrible accident"))]);
-            ("Zombie outbreak", eve "Hospital" "Zombie outbreak" true false false ["Janitor"] []);
-        ]);
-    ]
-    let test_repository = {
-        events = Map.ofList event_list;
-        users = Map.ofList user_list;
-        workflows = Map.ofList repo_list;
-        logs = Map.empty;
-    }
-
-    let resp = handle_user "Bob" "DELETE" test_repository
-    let (repo,message,status) = resp
-    let resp2 = handle_event "Hospital" "Enter" "excluded" "GET" "Bob"  repo (fun a b c d ->  (repo, "Medic,Patient,Janitor", 200))
-    0
