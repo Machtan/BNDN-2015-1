@@ -124,44 +124,53 @@ let debug_state (state: State): State =
         printfn "! Connection Error!"
     state
 
+type EventState = bool list
+type Workflow = (string * EventState) list
+// Gets the state of the active workflow
+let get_workflow_state (state: State): Workflow option =
+    match get_workflow_events state with
+    | None ->
+        None
+    | Some(events) ->
+        let folder (event: string) (workflow: Workflow): Workflow =
+            let event_url = sprintf "%s/resource/workflow/%s/%s" state.peer state.workflow event
+            let attributes = ["included"; "pending"; "executed"; "executable"]
+            let get_state (attribute: string) (event_state: EventState): EventState =
+                let url = sprintf "%s/%s" event_url attribute
+                match download url state.user with
+                | Ok(message) ->
+                    if message = "true" then
+                        true::event_state
+                    else
+                        false::event_state
+                | Error(message, status) ->
+                    false::event_state
+                | ConnectionError ->
+                    event_state
+            let status = List.foldBack get_state attributes []
+            (event, status)::workflow
+        let workflow = List.foldBack folder events []
+        Some(workflow)
+
 // Shows the state of the active workflow
 let show_status (state: State): State =
     if state.workflow = "" then
         printfn "! No active workflow, please change it first"
     else
-        match get_workflow_events state with
+        match get_workflow_state state with
         | None ->
             printfn "! Workflow '%s' not found!" state.workflow
-        | Some(events) ->
-            let print_event_status (event: string) =
-                let event_url = sprintf "%s/resource/workflow/%s/%s" state.peer state.workflow event
-                let attributes = ["included"; "pending"; "executed"; "executable"]
-                let get_state (attribute: string) (stats: bool list) =
-                    let url = event_url + "/" + attribute
-                    match download url state.user with
-                    | Ok(message) ->
-                        if message = "true" then
-                            true::stats
-                        else
-                            false::stats
-                    | Error(message, status) ->
-                        false::stats
-                    | ConnectionError ->
-                        stats
-                let event_status = List.foldBack get_state attributes []
-                if not ((List.length event_status) = 4) then
+        | Some(event_states) ->
+            let print_event_status (event, status) =
+                if not ((List.length status) = 4) then
                     printfn "! Could not get the state of '%s'" event
                 else
-                    let executable = if event_status.[3] then "->" else "| "
-                    let pending = if event_status.[1] then "!" else " "
-                    let executed = if event_status.[2] then "x" else pending
-                    let name = if event_status.[0] then " " + event else "(" + event + ")"
+                    let executable = if status.[3] then "->" else "| "
+                    let pending = if status.[1] then "!" else " "
+                    let executed = if status.[2] then "x" else pending
+                    let name = if status.[0] then " " + event else "(" + event + ")"
                     printfn "%s %s %s" executable executed name
-            List.iter print_event_status events
-    state
-
-// Attemts to execute an event
-let execute_event (state: State): State =
+            List.iter print_event_status event_states
     state
 
 // Exits the program
@@ -169,28 +178,39 @@ let exit_program (state: State) =
     printfn "> Goodbye..."
     exit 0
 
+let EXECUTE_ACTIONS = []
+
+// Attemts to execute an event
+let execute_event (state: State): State =
+    state
+
 // Valid actions for the user to take
-let actions: (string * string * (State -> State)) list = [
+let MAIN_ACTIONS: (string * string * (State -> State)) list = [
     ("1", "Change workflow", change_workflow);
     ("2", "Change user", change_user);
     ("3", "Show status", show_status);
-    ("4", "Execute event", execute_event);
+    ("4", "Execute events", execute_event);
     ("7", "Show logs", print_logs);
     ("8", "Debug", debug_state);
     ("9", "Exit program", exit_program);
 ]
 
-// The main loop
-let rec loop (state: State) =
+// Prints the actions of the given list
+let print_actions (actions: (string * string * (State -> State)) list)
+        (state: State) =
     printfn "> ==== Actions ==== | %s | %s " state.user state.workflow
     let print_action (identifier, desc, _) =
         printfn "- %s: %s" identifier desc
     List.iter print_action actions
+
+// The main loop
+let rec loop (state: State) =
+    print_actions MAIN_ACTIONS state
     printf "$ "
     let action = Console.ReadLine()
     let find_action (identifier, _, _) =
         action = identifier
-    match List.tryFind (fun (id, _, _) -> action = id) actions with
+    match List.tryFind (fun (id, _, _) -> action = id) MAIN_ACTIONS with
     | Some((_, _, func)) ->
         loop <| func state
     | None ->
