@@ -455,7 +455,8 @@ let rec route_leaf (node: Node) (typ: MessageType) (msg: string) (key: GUID)
 // Routes a message somewhere
 let rec route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
         (inter: PastryInterface<'a>) : Node * 'a * (string * int) =
-    printfn "ROUTE: Routing '%A' message towards '%A'" typ key
+    printfn "ROUTE: | Routing '%A'" typ
+    printfn "ROUTE: | towards '%A'" key
     let (node', state', message) =
         match typ with // This is actually okay since the nodes contain no strings
         | Join ->
@@ -523,6 +524,10 @@ let try_forward_pastry<'a> (node: Node) (cmd_str: string) (dst_str: string)
             reply response "Handling of death attempted" 200 "Ok"
             let (node', state', _) = handle_message node DeadNode body guid route inter
             Valid(node', state')
+        | "debug" ->
+            let msg = sprintf "==== Pastry state ====\n%A\n==== Application state ====\n%A" node inter.state
+            reply response msg 200 "Ok"
+            Valid(node, inter.state)
         | _ ->
             let error_message = sprintf "Bad pastry command: '%s'" cmd_str
             Invalid(error_message, 400, "Not Found")
