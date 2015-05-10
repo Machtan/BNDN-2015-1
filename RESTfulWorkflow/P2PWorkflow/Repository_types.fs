@@ -19,8 +19,11 @@ type EventState = {
     executed: bool;
 }
 
+type User = {
+    name: UserName;
+    roles: Map<WorkflowName, Roles>;
+}
 
-type User = UserName*((WorkflowName*Roles) list)  // The name of a user + witch roles he have it witch workflow
 type EventName = WorkflowName*string      // WorkflowName*EventName
 type Workflow = { // The name of a workflow and the events it contain
     name: string;
@@ -72,12 +75,24 @@ type Repository = {
     workflows: Map<string, Workflow>;
 }
 
-// posible results when working with users
-type ResultUser =
-    | Ok of Repository
-    | Unauthorized
-    | NotExecutable
-    | MissingUser
+// The result when creating a new user
+type CreateUserResult =
+| Ok of Repository
+| UserAlreadyExists
+
+// The result when adding roles to a user
+type AddRolesResult =
+| Ok of Repository
+| UserNotFound
+
+// Samey
+type DeleteUserResult = AddRolesResult
+
+// The result when removing roles from a user
+type RemoveRolesResult =
+| Ok of Repository
+| UserNotFound
+| NoRolesForWorkflow
 
 // posible results when working with workflows
 type ResultWorkflow =

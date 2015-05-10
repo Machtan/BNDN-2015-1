@@ -3,91 +3,87 @@
 open Repository_types
 open EventLogic
 
-type UpdateMapResult =
-| MapOk of Map<string, User>
-| MapErr of ResultUser
- 
 
 let getUser (user : UserName) (repository : Repository) : User option =
     match Map.tryFind user repository.users with
-    | Some(innerMap)   -> Some(innerMap)
-    | None      -> None
+    | Some(innerMap) ->
+        Some(innerMap)
+    | None ->
+        None
 
 //Create
 
 /// Creates and returns a new user from a name
-let create_user (user : UserName)  (repository : Repository) : ResultUser =     
-    let nUser = (user,[]) : User
+let create_user (name: UserName) (repository : Repository): CreateUserResult =
     //Det skal lige chekkes om workflow'et ekesitire
-    match Map.tryFind user repository.users with
-    | Some(innerMap)   -> ResultUser.NotExecutable
-    | None      ->  ResultUser.Ok({repository with users = Map.add user nUser repository.users})
-   
-
+    match Map.tryFind name repository.users with
+    | Some(innerMap) ->
+        UserAlreadyExists
+    | None ->
+        let user: User = {
+            name = name;
+            roles = Map.empty;
+        }
+        let updated_users = Map.add name user repository.users
+        CreateUserResult.Ok({repository with users = updated_users; })
 
 //Read
 
-/// Metodes used when finding all executabel event for a user 
-let get_user_roles (username : UserName)  (workflow : WorkflowName) (repository : Repository) : Roles =
-        let user = getUser username repository
-
-        match (user) with
-        | Some(u) -> 
-            let (uuserName,uWfRolesList) = u 
-            let rec GetRolesList (ls : (WorkflowName * Roles) list) =
-                match (ls) with
-                | (wf,rl)::ls' -> Set.union rl (GetRolesList ls')
-                | [] -> Set.empty
-            GetRolesList uWfRolesList
+/// Metodes used when finding all executabel event for a user
+let get_user_roles (username : UserName)  (workflow : WorkflowName)
+        (repository : Repository) : Roles =
+    match getUser username repository with
+    | Some(user) ->
+        match Map.tryFind workflow user.roles with
+        | Some(roles) -> roles
         | None -> Set.empty
+    | None -> Set.empty
 
 //Update
 
 /// Adds given workflow roles to a given user and returns the result
-let add_user_roles  (username : UserName) (workflow : WorkflowName) (roles : Roles) (repository : Repository): ResultUser =  
-        let user = getUser username repository
-        match (user) with
-        | Some(u) -> 
-            let (uuserName,uWfRolesList) = u 
-            let rec UpdateUserRoles ls =
-                match (ls) with
-                | (wf,rl)::ls ->  
-                    match (wf) with
-                    | wf when wf = workflow ->   
-                            (wf, Set.union rl roles) :: UpdateUserRoles ls                           
-                    | _ -> (wf,rl) :: UpdateUserRoles ls
-                | [] -> []
-
-            ResultUser.Ok({repository with users = Map.add username (username, UpdateUserRoles uWfRolesList) repository.users})
-        | None -> ResultUser.MissingUser
-
+let add_user_roles  (username : UserName) (workflow : WorkflowName)
+        (roles : Roles) (repository : Repository): AddRolesResult =
+    match getUser username repository with
+    | Some(user) ->
+        let user_roles =
+            match Map.tryFind workflow user.roles with
+            | Some(roles) -> roles
+            | None -> Set.empty
+        let updated_roles = Map.add workflow (Set.union user_roles roles) user.roles
+        let updated_user = { user with roles = updated_roles; }
+        let updated_users = Map.add user.name updated_user repository.users
+        let updated_repo = { repository with users = updated_users; }
+        AddRolesResult.Ok(updated_repo)
+    | None ->
+        AddRolesResult.UserNotFound
 
 //Delete
 
 /// Deletes given user and returns it if its successful
-let delete_user username repository : ResultUser =
-    let user = getUser username repository
-    match (user) with
-     | Some(u) ->  
-        let inner (x : Repository) = Map.remove username x.users
-        ResultUser.Ok({repository with users = inner repository})
-     | None -> ResultUser.MissingUser
-    
+let delete_user username repository : DeleteUserResult =
+    match getUser username repository with
+     | Some(user) ->
+        let updated_users = Map.remove user.name repository.users
+        DeleteUserResult.Ok({repository with users = updated_users; })
+     | None ->
+        DeleteUserResult.UserNotFound
 
 /// Removes given workflow roles form given user and returns the result
-let remove_user_roles  (username : UserName) (workflow : WorkflowName) (roles : Roles) (repository : Repository): ResultUser =  
-        let user = getUser username repository
-        match (user) with
-        | Some(u) -> 
-            let (uuserName,uWfRolesList) = u 
-            let rec UpdateUserRoles ls =
-                match (ls) with
-                | (wf,rl)::ls ->  
-                    match (wf) with
-                    | wf when wf = workflow ->   
-                            (wf, Set.difference rl roles) :: UpdateUserRoles ls                           
-                    | _ -> (wf,rl) :: UpdateUserRoles ls
-                | [] -> []
-
-            ResultUser.Ok({repository with users = Map.add username (username, UpdateUserRoles uWfRolesList) repository.users})
-        | None -> ResultUser.MissingUser
+let remove_user_roles  (username : UserName) (workflow : WorkflowName)
+        (roles : Roles) (repository : Repository): RemoveRolesResult =
+    match getUser username repository with
+    | Some(user) ->
+        match Map.tryFind workflow user.roles with
+        | Some(user_roles) ->
+            let valid_role (role: string) =
+                not (Set.contains role roles)
+            let updated_roles = Map.add workflow (Set.filter valid_role user_roles) user.roles
+            let updated_user = { user with roles = updated_roles; }
+            let updated_users = Map.add user.name updated_user repository.users
+            let updated_repo = { repository with users = updated_users; }
+            RemoveRolesResult.Ok(updated_repo)
+        | None ->
+            RemoveRolesResult.NoRolesForWorkflow
+    | None ->
+        RemoveRolesResult.UserNotFound

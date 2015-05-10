@@ -11,11 +11,12 @@ type Command = {
 type CommandType =
 | CreateUser of string // name
 | AddRoles of string * string * Set<string> // user, wf, roles
-| CreateWorkflow of string * (string list) // name events
+| CreateWorkflow of string
 // workflow event included pending executed locked roles
 | CreateEvent of string * string * bool * bool * bool * bool * Set<string>
 // workflow event type workflow event
 | AddRelation of string * string * RelationType * string * string
+| AddEvent of string * string
 
 let cmd path meth data : Command =
     { path = path; meth = meth; data = data; }
@@ -25,15 +26,19 @@ let get_command (typ: CommandType) : Command =
     match typ with
     | CreateUser(user) ->
         cmd (sprintf "user/%s" user) "POST" ""
+
     | AddRoles(user, workflow, roles) ->
         cmd (sprintf "user/%s/%s" user workflow) "PUT" (String.concat "," roles)
-    | CreateWorkflow(workflow, events) ->
-        cmd (sprintf "workflow/%s" workflow) "POST" (String.concat "," events)
+
+    | CreateWorkflow(workflow) ->
+        cmd (sprintf "workflow/%s" workflow) "POST" ""
+
     | CreateEvent(workflow, event, included, pending, executed, locked, roles) ->
         let ser b = if b then "1" else "0"
         let initstate = (ser included) + (ser pending) + (ser executed) + (ser locked)
         let data = initstate + "," + (String.concat "," roles)
         cmd (sprintf "workflow/%s/%s" workflow event) "POST" data
+
     | AddRelation(workflow, event, reltype, dst_workflow, dst_event) ->
         let rel =
             match reltype with
@@ -43,6 +48,11 @@ let get_command (typ: CommandType) : Command =
             | Inclusion -> "inclusion"
         let path = sprintf "workflow/%s/%s/%s/to" workflow event rel
         let data = sprintf "%s,%s" dst_workflow dst_event
+        cmd path "PUT" data
+
+    | AddEvent(workflow, event) ->
+        let path = sprintf "workflow/%s" workflow
+        let data = event
         cmd path "PUT" data
 
 // Debug pretty print
@@ -71,22 +81,28 @@ let get_migratable_commands (repo: Repository) (predicate: string -> bool)
     let (events, event_cmds) = Map.foldBack event_folder repo.events (Map.empty, [])
 
     // Add the workflow creation commands before the events
-    let workflow_folder name events (workflow, cmds) =
-        let typ = CreateWorkflow(name, events)
+    let workflow_folder (name: string) (workflow: Workflow) (updated_workflows, cmds) =
+        let typ = CreateWorkflow(name)
         if predicate (get_command typ).path then
-            workflow, typ::cmds
+            let folder (event: string) event_cmds =
+                let cmd = AddEvent(name, event)
+                cmd::event_cmds
+            let updated_commands = List.foldBack folder workflow.events (typ::cmds)
+            updated_workflows, updated_commands
         else
-            Map.add name events workflow, cmds
+            Map.add name workflow updated_workflows, cmds
     let (workflows, workflow_cmds) = Map.foldBack workflow_folder repo.workflows (Map.empty, event_cmds)
 
     // Add the user creation commands before the workflows
-    let user_folder name user (users, cmds) = // string User
-        let (_, permissions) = user
-        let perm_folder (wfname, roles) acc' =
-            (AddRoles(name, wfname, roles))::acc'
+    let user_folder (name: string) (user: User) (users, cmds) = // string User
+        let role_folder (workflow: string) (roles: Roles) role_cmds =
+            (AddRoles(name, workflow, roles))::role_cmds
+
         let create_cmd = CreateUser(name)
+
         if predicate (get_command create_cmd).path then // Should migrate user
-            users, create_cmd::(List.foldBack perm_folder permissions cmds)
+            let updated_commands = Map.foldBack role_folder user.roles (create_cmd::cmds)
+            users, updated_commands
         else
             (Map.add name user users), cmds
     let (users, all_cmds) = Map.foldBack user_folder repo.users (Map.empty, workflow_cmds)

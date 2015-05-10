@@ -20,6 +20,14 @@ type Attribute =
 | Executed
 | Pending
 
+// User serialization type
+type UserAction =
+| Create of UserName
+| Delete of UserName
+| GetRoles of UserName * WorkflowName
+| AddRoles of UserName * WorkflowName * Roles
+| RemoveRoles of UserName * WorkflowName * Roles
+
 // Splits a string into a list by a char
 let split (str: string) (c: char) =
     List.ofArray (str.Split([|c|]))
@@ -113,6 +121,7 @@ let deleteEvent eventName workflowName (repository : Repository) sendFunc : Reso
     | Result.MissingWorkflow -> (repository,"Workflow is missing", 400)
     | Result.Error(s) -> (repository,s, 400)
 
+// Creates a new event
 let createEvent (eventName: string) (workflowName: string) (message: string)
         (repository : Repository) : ResourceResponse<Repository> =
     let args = split message ','
@@ -188,45 +197,47 @@ let createWorkflow workflowName repo  : ResourceResponse<Repository> =
     | Result.MissingWorkflow -> (repo,"Workflow is missing", 400)
     | Result.Error(s) -> (repo,s, 400)
 
-let createUser userName repo  : ResourceResponse<Repository> =
-    let response = create_user userName repo
-    match (response) with
-    | ResultUser.Ok(r) -> (r,"Created.", 201)
-    | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
-    | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
-    | ResultUser.MissingUser -> (repo,"user is missing", 400)
-
-let deleteUser userName repo  : ResourceResponse<Repository> =
-    let response = delete_user userName repo
-    match (response) with
-    | ResultUser.Ok(w) -> (repo,"Deleted.", 200)
-    | ResultUser.Unauthorized -> (repo,"Unauthorized", 401)
-    | ResultUser.NotExecutable -> (repo,"The event is not executable.", 400)
-    | ResultUser.MissingUser -> (repo,"The relation is missing.", 400)
-
 // Creates a new repository
 let create_repository () : Repository =
     { events = Map.empty; users = Map.empty; workflows = Map.empty; }
 
-// Serializes the permissions of a given user for HTTP transfer
-let serialize_user_permissions (user: User) : string =
-    "Not Implemented"
-
 // Matches the given user and
-let handle_user (user_name: string) (meth: string) (repo: Repository) : ResourceResponse<Repository> =
-    match meth with
-    | "POST" -> // Create a new user
-        createUser user_name repo
-    | "DELETE" -> // Delete a user
-        deleteUser user_name repo
-    | "GET" -> // Get the workflow permissions of a user
-        match Map.tryFind user_name repo.users with
-        | None ->
+let handle_user (action: UserAction) (repo: Repository) : ResourceResponse<Repository> =
+    match action with
+    | UserAction.Create(user) ->
+        match create_user user repo with
+        | CreateUserResult.Ok(updated_repo) ->
+            updated_repo, "User created!", 200
+        | CreateUserResult.UserAlreadyExists ->
+            repo, "User already exists!", 400
+
+    | UserAction.Delete(user) ->
+        match delete_user user repo with
+        | DeleteUserResult.Ok(updated_repo) ->
+            updated_repo, "User deleted!", 200
+        | DeleteUserResult.UserNotFound ->
+            repo, "User not found!", 404
+
+    | UserAction.GetRoles(user, workflow) ->
+        let roles = get_user_roles user workflow repo
+        let message = String.concat "," roles
+        repo, message, 200
+
+    | UserAction.AddRoles(user, workflow, roles) ->
+        match add_user_roles user workflow roles repo with
+        | AddRolesResult.Ok(updated_repo) ->
+            updated_repo, "Roles added!", 200
+        | AddRolesResult.UserNotFound ->
             repo, "User not found", 404
-        | Some(user) ->
-            repo, serialize_user_permissions user, 200
-    | _ ->
-        repo, "Unsupported user operation", 400
+
+    | UserAction.RemoveRoles(user, workflow, roles) ->
+        match remove_user_roles user workflow roles repo with
+        | RemoveRolesResult.Ok(updated_repo) ->
+            updated_repo, "Roles removed!", 200
+        | RemoveRolesResult.NoRolesForWorkflow ->
+            repo, "The user has no roles for that workflow", 200
+        | RemoveRolesResult.UserNotFound ->
+            repo, "The user could not be found", 404
 
 // Handles requests for the givien workflow (getting the events in it)
 let handle_workflow (workflow: string) (meth: string) (data: string) (repo: Repository)
@@ -345,7 +356,6 @@ let handle_relation (workflow_name: string) (event_name: string) (reltype: strin
             let msg = sprintf "Invalid connection '%s' should be 'to' or 'from'" con_str
             (repo, msg, 400)
 
-
 // Handles a full migration (a node has died, and is being remade)
 let handle_full_migration (meth: string) (data: string)
         (send_func: SendFunc<Repository>) (initial_state: Repository)
@@ -418,44 +428,59 @@ let handle_log (workflow: string) (event: string) (meth: string) (data: string)
         (repo, "ERROR: Bad log request method: " + meth, 400)
 
 // The actual resource handling function
-let handle_resource (path: string) (meth: string) (message: string) (send_func: SendFunc<Repository>)
-        (initial_state: Repository) : ResourceResponse<Repository> =
+let handle_resource (path: string) (meth: string) (message: string)
+        (send_func: SendFunc<Repository>) (repo: Repository)
+        : ResourceResponse<Repository> =
+    match split path '/' with
+    | [] ->
+        repo, "Nothing asked, nothing found.",400
 
-    let parts = split path '/'
-    let response =
-        //printfn "Parts: %A" parts
-        match parts with
-        | [] ->
-            initial_state, "Nothing asked, nothing found.",400
+    | "user"::args ->
+        match meth, args with
+        | "POST", user::[] ->
+            handle_user <| UserAction.Create(user) <| repo
 
-        | "user"::user::[] ->
-            handle_user user meth initial_state
+        | "DELETE", user::[] ->
+            handle_user <| UserAction.Delete(user) <| repo
 
-        | "workflow"::workflow::[] ->
-            handle_workflow workflow meth message initial_state
+        | "PUT", user::"roles"::workflow::event::[] ->
+            let roles = Set.ofList (split message ',')
+            handle_user <| UserAction.AddRoles(user, workflow, roles) <| repo
 
-        | "workflow"::workflow::event::[] -> // Create event
-            handle_event workflow event "" meth message initial_state send_func
+        | "GET", user::"roles"::workflow::[] ->
+            handle_user <| UserAction.GetRoles(user, workflow) <| repo
 
-        | "workflow"::workflow::event::attribute::[] ->
-            handle_event workflow event attribute meth message initial_state send_func
-
-        | "workflow"::workflow::event::relation::connection::[] ->
-            handle_relation workflow event relation connection meth message initial_state send_func
-
-        | "migrate"::[] ->
-            handle_full_migration meth message send_func initial_state
-
-        | "migrate"::from_guid::to_guid::[] ->
-            handle_partial_migration meth from_guid to_guid send_func initial_state
-
-        | "log"::workflow::event::[] ->
-            handle_log workflow event meth message initial_state
-
-        | "log"::workflow::[] ->
-            handle_log workflow "" meth message initial_state
+        | "DELETE", user::"roles"::workflow::event::[] ->
+            let roles = Set.ofList (split message ',')
+            handle_user <| UserAction.RemoveRoles(user, workflow, roles) <| repo
 
         | _ ->
-            printfn "Invalid path gotten: %s" path
-            initial_state, "Invalid path", 400
-    response
+            (repo, "Unsupported user operation", 400)
+
+    | "workflow"::workflow::[] ->
+        handle_workflow workflow meth message repo
+
+    | "workflow"::workflow::event::[] -> // Create event
+        handle_event workflow event "" meth message repo send_func
+
+    | "workflow"::workflow::event::attribute::[] ->
+        handle_event workflow event attribute meth message repo send_func
+
+    | "workflow"::workflow::event::relation::connection::[] ->
+        handle_relation workflow event relation connection meth message repo send_func
+
+    | "migrate"::[] ->
+        handle_full_migration meth message send_func repo
+
+    | "migrate"::from_guid::to_guid::[] ->
+        handle_partial_migration meth from_guid to_guid send_func repo
+
+    | "log"::workflow::event::[] ->
+        handle_log workflow event meth message repo
+
+    | "log"::workflow::[] ->
+        handle_log workflow "" meth message repo
+
+    | _ ->
+        printfn "Invalid path gotten: %s" path
+        repo, "Invalid path", 400

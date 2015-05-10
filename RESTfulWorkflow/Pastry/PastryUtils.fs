@@ -11,7 +11,7 @@ open PastryTypes
 
 // Just a little formatting
 let error str =
-    printfn "ERROR: %s" str
+    printfn "PASTRY ERROR: %s" str
 
 // Splits a string at the given char and returns a list of substrings
 let split (str: string) (c: char) =
@@ -190,7 +190,11 @@ let get_destination (resource_url: string list): Destination =
     let path = String.concat "/" resource_url
     match resource_url with
     | "user"::name::[] ->
-        Ok(hash (sprintf "user/%s" name))
+        Ok(hash <| sprintf "user/%s" name)
+    | "user"::name::"roles"::workflow::event::[] ->
+        Ok(hash <| sprintf "user/%s" name)
+    | "user"::name::"roles"::workflow::[] ->
+        Ok(hash <| sprintf "user/%s" name)
     | "user"::name::unwanted_stuff ->
         let error_message = sprintf "UTILS: Bad user path '%s'. It should be on the form 'user/<username>'" path
         Error(error_message, 400, "Invalid URL")
@@ -203,7 +207,7 @@ let get_destination (resource_url: string list): Destination =
     | "workflow"::workflow::event::relation::dst::[] ->
         Ok(hash (sprintf "workflow/%s/%s" workflow event))
     | "workflow"::badly_formed_path ->
-        let error_message = sprintf "UTILS: Bad workflow path '%s'. It should be on the form '/resource/workflow/<name>[/<eventname>/<attribute>]'" path
+        let error_message = sprintf "UTILS: Bad workflow path '%s'.\nIt should be on the form '/resource/workflow/<name>[/<eventname>/<attribute>]'" path
         Error(error_message, 400, "Invalid URL")
     | "log"::workflow::[] ->
         Ok(hash (sprintf "workflow/%s" workflow))
