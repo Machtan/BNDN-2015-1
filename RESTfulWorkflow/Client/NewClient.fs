@@ -4,7 +4,7 @@ open System.IO
 open System.Text
 
 // A result for the http functions
-type HttpResult<'a> =
+type HttpResult =
 | Ok of string
 | Error of string * int
 | ConnectionError
@@ -27,6 +27,10 @@ type Event = {
 
 type Workflow = Event list
 
+type HttpAction =
+| Download of string * string
+| Upload of string * string * string
+
 let DUMMY_GUID = "1020304050102030405010203040501020304050"
 
 // Splits a string into a list by a char
@@ -40,50 +44,40 @@ let print_actions<'a> (actions: (string * string * 'a) list) (state: State) =
         printfn "- %s: %s" identifier desc
     List.iter print_action actions
 
-// Uploads a string
-let upload (url: string) (meth: string) (data: string) : HttpResult<exn> =
+// Does some http stuff (like error handling)
+let send_http (action: HttpAction) : HttpResult =
     try
         use w = new System.Net.WebClient ()
-        Ok(w.UploadString(url, meth, data))
+        match action with
+        | Download(url, data) ->
+            let full_url = sprintf "%s?data=%s" url data
+            Ok(w.DownloadString(full_url))
+        | Upload(url, meth, data) ->
+            Ok(w.UploadString(url, meth, data))
     with
     | :? WebException as error ->
-        printfn "Got exception: %A" error
-        printfn "Error status: %A" error.Status
+        //printfn "Got exception: %A" error
+        //printfn "Error status: %A" error.Status
         match error.Status with
-        | WebExceptionStatus.Success ->
+        | WebExceptionStatus.Success | WebExceptionStatus.ProtocolError ->
             let response: HttpWebResponse = error.Response :?> HttpWebResponse
             let status: int = int response.StatusCode
-            printfn "Status code: %d" status
             let message =
-                let encoding = Encoding.GetEncoding(response.ContentEncoding)
+                let encoding = Encoding.UTF8
                 use is = new System.IO.StreamReader(response.GetResponseStream(), encoding)
                 is.ReadToEnd()
+            //printfn "Web error: %d | %s" status message
             Error(message, status)
         | _ ->
             ConnectionError
 
+// Uploads a string
+let upload (url: string) (meth: string) (data: string) : HttpResult =
+    send_http <| Upload(url, meth, data)
+
 // Downloads a string
-let download (url : string) (data: string) : HttpResult<exn> =
-    try
-        use w = new System.Net.WebClient ()
-        let full_url = sprintf "%s?data=%s" url data
-        Ok(w.DownloadString(full_url))
-    with
-    | :? WebException as error ->
-        printfn "Got exception: %A" error
-        printfn "Error status: %A" error.Status
-        match error.Status with
-        | WebExceptionStatus.Success ->
-            let response: HttpWebResponse = error.Response :?> HttpWebResponse
-            let status: int = int response.StatusCode
-            printfn "Status code: %d" status
-            let message =
-                let encoding = Encoding.GetEncoding(response.ContentEncoding)
-                use is = new System.IO.StreamReader(response.GetResponseStream(), encoding)
-                is.ReadToEnd()
-            Error(message, status)
-        | _ ->
-            ConnectionError
+let download (url : string) (data: string) : HttpResult =
+    send_http <| Download(url, data)
 
 // Attempts to get a list of the events of a given workflow
 let get_workflow_events (state: State) : (string list) option =
@@ -230,9 +224,10 @@ let rec execute_event (state: State) (updated: bool): State =
                 | ConnectionError ->
                     printfn "! Connection error!"
                     false
-            num + 1, (string num, event.name, func)::actions
+            num - 1, (string num, event.name, func)::actions
         let executable_events: Event list = List.filter filter workflow
-        let (_, enumerated_actions) = List.foldBack folder executable_events (1, [])
+        let fold_state = (List.length executable_events, [])
+        let (_, enumerated_actions) = List.foldBack folder executable_events fold_state
         let actions = List.append <| enumerated_actions <| EXECUTE_ACTIONS
         print_actions actions state
         printf "$ "
