@@ -213,14 +213,14 @@ let rec execute_event (state: State) (updated: bool): State =
         let filter (event: Event) = event.executable
         let folder (event: Event) (num, actions) =
             let func (): bool =
-                let url = sprintf "%s/resource/workflow/%s/%s/executed" state.peer event.name state.workflow
+                let url = sprintf "%s/resource/workflow/%s/%s/executed" state.peer state.workflow event.name
                 match upload url "PUT" state.user with
                 | Ok(resp) ->
                     printfn "> Executed!"
                     true
                 | Error(resp, status) ->
                     printfn "! Error: %d | %s" status resp
-                    true
+                    false
                 | ConnectionError ->
                     printfn "! Connection error!"
                     false
