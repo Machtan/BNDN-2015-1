@@ -86,7 +86,7 @@ let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Rep
         let workflow, event = eventName
         let data = sprintf "%s,%s" (string dateTime) userName
         let url = sprintf "resource/log/%s/%s" workflow event
-        sendFunc url "DELETE" data repository
+        sendFunc url "PUT" data repository
 
 /// tests if a ResourceResponse is positive
 let check_if_positive (status: int) : bool =

@@ -20,6 +20,12 @@ type Attribute =
 | Executed
 | Pending
 
+// An attribute on an event that can be set
+type SetAttribute =
+| Included
+| Excluded
+| Pending
+
 // User serialization type
 type UserAction =
 | Create of UserName
@@ -51,9 +57,9 @@ let get_attribute (event_name: string) (workflow: string) (attribute: Attribute)
     | Some(event) ->
         let bool_value =
             match attribute with
-            | Included  -> event.included
-            | Executed  -> event.executed
-            | Pending   -> event.pending
+            | Attribute.Included  -> event.included
+            | Attribute.Executed  -> event.executed
+            | Attribute.Pending   -> event.pending
         let resp = if bool_value then "true" else "false"
         (repo, resp, 200)
     | None ->
@@ -61,15 +67,15 @@ let get_attribute (event_name: string) (workflow: string) (attribute: Attribute)
 
 // Gets the 'included' state of an event
 let getIncluded event workflow repo : ResourceResponse<Repository>  =
-    get_attribute event workflow Included repo
+    get_attribute event workflow Attribute.Included repo
 
 // Gets the 'pending' state of an event
 let getPending event workflow repo : ResourceResponse<Repository> =
-    get_attribute event workflow Pending repo
+    get_attribute event workflow Attribute.Pending repo
 
 // Gets the 'executed' state of an event
 let getExecuted event workflow repo : ResourceResponse<Repository> =
-    get_attribute event workflow Executed repo
+    get_attribute event workflow Attribute.Executed repo
 
 // Gets the 'executable' state of an event
 let getExecutable (event: EventName) (user: string)
@@ -153,12 +159,21 @@ let createEvent (eventName: string) (workflowName: string) (message: string)
 let addRelation (relation: RelationType) (connection: Connection)
         (send_func: SendFunc<Repository>) (repo: Repository)
         : ResourceResponse<Repository>=
+    let con_desc =
+        match connection with
+        | To(a, b) -> sprintf "to %A from %A" b a
+        | From(a, b) -> sprintf "from %A to %A" a b
+    printfn "RELATION: Adding %A %s" relation con_desc
     let response =
         match connection with
-        | From(a, b) -> add_relation_to a relation b send_func repo
-        | To  (a, b) -> add_relation_from a relation b repo
+        | To(a, b) -> add_relation_to a relation b send_func repo
+        | From(a, b) -> add_relation_from a relation b repo
     match (response) with
-    | Result.Ok(repo')          -> (repo', "Created.", 201)
+    | Result.Ok(updated_repo) ->
+        match connection with
+        | From(a, b) | To(a, b) ->
+            printfn "RELATION: Updated events: %A / %A" (get_event a updated_repo) (get_event b updated_repo)
+        (updated_repo, "Created.", 201)
     | Result.Unauthorized       -> (repo, "Unauthorized", 401)
     | Result.NotExecutable      -> (repo, "The event is not executable.", 400)
     | Result.MissingRelation    -> (repo, "The relation is missing.", 400)
@@ -272,6 +287,28 @@ let handle_workflow (workflow: string) (meth: string) (data: string) (repo: Repo
     | _ ->
         repo, "Unsupported workflow operation", 400
 
+// Sets the attribute of an event
+let set_attribute (event: EventName) (attribute: SetAttribute)
+        (send_func: SendFunc<Repository>) (repo: Repository)
+        : ResourceResponse<Repository> =
+        let result =
+            match attribute with
+            | SetAttribute.Pending ->
+                set_pending event true repo
+            | SetAttribute.Included ->
+                set_included event true repo
+            | SetAttribute.Excluded ->
+                set_included event false repo
+        match result with
+        | Result.Ok(updated_repo)   -> (updated_repo, "Executed", 201)
+        | Result.Unauthorized       -> (repo, "Unauthorized", 401)
+        | Result.NotExecutable      -> (repo, "The event is not executable.", 400)
+        | Result.MissingRelation    -> (repo, "The relation is missing.", 404)
+        | Result.LockConflict       -> (repo, "Encountered LockConflict.", 400)
+        | Result.MissingEvent       -> (repo, "Event is missing", 404)
+        | Result.MissingWorkflow    -> (repo, "Workflow is missing", 404)
+        | Result.Error(message)     -> (repo, message, 400)
+
 // Matches the given event and tries to handle the request
 let handle_event (workflow_name: string) (event_name: string) (attribute: string)
         (meth: string) (message: string) (repo: Repository)
@@ -288,8 +325,22 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         setExecuted (workflow_name, event_name) message repo sendFunc
     | "GET", "pending" ->
         getPending event_name workflow_name repo
+    | "PUT", "pending" ->
+        match message with
+        | "true" ->
+            set_attribute (workflow_name, event_name) SetAttribute.Pending sendFunc repo
+        | _ ->
+            (repo, "Invalid pending state: Must be 'true'", 400)
     | "GET", "included" ->
         getIncluded event_name workflow_name repo
+    | "PUT", "included" ->
+        match message with
+        | "true" ->
+            set_attribute (workflow_name, event_name) SetAttribute.Included sendFunc repo
+        | "false" ->
+            set_attribute (workflow_name, event_name) SetAttribute.Excluded sendFunc repo
+        | _ ->
+            (repo, "Invalid include state: Must be 'true' or 'false'", 400)
     | "PUT", "lock" ->
         match lock_event (workflow_name, event_name) repo with
         | Result.Ok(updated_state) ->

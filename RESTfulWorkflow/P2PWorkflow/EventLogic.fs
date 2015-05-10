@@ -167,6 +167,7 @@ let lock_all (events_to_lock: Set<EventName>) (sendFunc: SendFunc<Repository>)
 let update_all (relations: Set<Relation>) (send_func: SendFunc<Repository>)
         (state: Repository) : bool * Repository=
     let update (reltype, event) (can_continue, updated_repo) : bool * Repository =
+        printfn "EXECUTE: Updating %A to %A (continue: %A)..." reltype event can_continue
         if can_continue then
             match reltype with
             | Condition -> // We check backwards, so nothing here
@@ -175,17 +176,23 @@ let update_all (relations: Set<Relation>) (send_func: SendFunc<Repository>)
                 let (new_repo, resp, status) = send (SetIncluded(event, false)) send_func updated_repo
                 if check_if_positive status
                 then (true, new_repo)
-                else (false, updated_repo)
+                else
+                    printfn "EXECUTE ERROR: Could not exclude '%A' | %d | '%s'!" event status resp
+                    (false, updated_repo)
             | Response  ->
                 let (new_repo, resp, status) = send (SetPending(event, true)) send_func updated_repo
                 if check_if_positive status
                 then (true, new_repo)
-                else (false, updated_repo)
+                else
+                    printfn "EXECUTE ERROR: Could not notify '%A' | %d | '%s'!" event status resp
+                    (false, updated_repo)
             | Inclusion ->
                 let (new_repo, resp, status) = send (SetIncluded(event, true)) send_func updated_repo
                 if check_if_positive status
                 then (true, new_repo)
-                else (false, updated_repo)
+                else
+                    printfn "EXECUTE ERROR: Could not include '%A' | %d | '%s'!" event status resp
+                    (false, updated_repo)
         else
             (can_continue, updated_repo)
 
@@ -207,12 +214,15 @@ let unlock_all (events: Set<EventName>) (send_func: SendFunc<Repository>)
 /// Executes and returns the given event if the given user has the required role
 let execute (eventName : EventName) (userName : UserName)
         (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
+    printfn "EXECUTE: Executing %A!" eventName
     match check_if_executable eventName userName sendFunc repository with
     | ReadResult.Ok(executable_state) ->
         let event_result = get_event eventName repository
         match event_result, executable_state with
         | ReadResult.Ok(event, _), ExecutableState.Executable ->
             // Find out which events need to be locked before executing this one
+            printfn "EXECUTE: ToRelations: %A" event.toRelations
+            printfn "EXECUTE: FromRelations: %A" event.fromRelations
             let onlyNecessary x =
               let typ, _ = x
               typ = Condition || typ = Exclusion
@@ -221,7 +231,9 @@ let execute (eventName : EventName) (userName : UserName)
                 Set.add event acc
             let necessary_from_relations = Set.filter onlyNecessary event.fromRelations
             let necessary_relations = Set.union necessary_from_relations event.toRelations
-            let events_to_lock = Set.fold setSplit Set.empty necessary_relations
+            let all_events_to_lock = Set.fold setSplit Set.empty necessary_relations
+            // NOTE: Remove this event from the lists :p
+            let events_to_lock = Set.remove eventName all_events_to_lock
             let (succesfully_locked, locked_state) = lock_all events_to_lock sendFunc repository
             if succesfully_locked then
                 let (succesfully_updated, updated_repo) =

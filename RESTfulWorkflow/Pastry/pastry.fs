@@ -362,8 +362,8 @@ let update_node<'a> (node: Node) (new_node: Node) (inter: PastryInterface<'a>)
 let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: GUID)
         (route_func: RouteFunc<'a>) (inter: PastryInterface<'a>)
         : Node * 'a * (string * int) =
-    printfn "HANDLE: | Handling '%A'" typ
-    printfn "HANDLE: | '%s'" message
+    //printfn "HANDLE: | Handling '%A'" typ
+    //printfn "HANDLE: | '%s'" message
     match typ with
     | Join -> // A node is requesting to join, and this is the one with the nearest GUID
         let firstsep = message.IndexOf(SEPARATOR)
@@ -596,7 +596,7 @@ let start_listening<'a when 'a: equality> (node: Node) (inter_arg: PastryInterfa
 
     // Listen for a a message
     let rec listen (node: Node) (old_inter: PastryInterface<'a>) =
-        printfn "> Waiting..."
+        printf "> " // Show that pastry is listening and not dead
 
         // Update the send function!
         let inter = { old_inter with send = create_send_func node old_inter; }
