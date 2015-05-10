@@ -72,10 +72,10 @@ let getExecuted event workflow repo : ResourceResponse<Repository> =
     get_attribute event workflow Executed repo
 
 // Gets the 'executable' state of an event
-let getExecutable (event: string) (workflow: string) (user: string)
+let getExecutable (event: EventName) (user: string)
         (sendfunc: SendFunc<Repository>) (repo: Repository)
         : ResourceResponse<Repository> =
-    match check_if_executable (workflow, event) user sendfunc repo with
+    match check_if_executable event user sendfunc repo with
     | ReadResult.Ok(executable_state) ->
         match executable_state with
         | ExecutableState.Executable ->
@@ -95,8 +95,7 @@ let getExecutable (event: string) (workflow: string) (user: string)
         repo, "Workflow not found", 404
 
 // Attempts to execute the given event
-let setExecuted workflowName eventName userName repo sendFunc :ResourceResponse<Repository>  =
-    let event = (workflowName,eventName): EventName
+let setExecuted (event: EventName) userName repo sendFunc :ResourceResponse<Repository>  =
     let response = execute event userName sendFunc repo
     match (response) with
     | Result.Ok(r) -> (r,"Executed", 201)
@@ -286,7 +285,7 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
     | "GET", "executed" ->
         getExecuted event_name workflow_name repo
     | "PUT", "executed" ->
-        setExecuted workflow_name event_name message repo sendFunc
+        setExecuted (workflow_name, event_name) message repo sendFunc
     | "GET", "pending" ->
         getPending event_name workflow_name repo
     | "GET", "included" ->
@@ -308,7 +307,7 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         | err ->
             repo, (sprintf "Got error %A" err), 400
     | "GET", "executable" ->
-        getExecutable event_name workflow_name message sendFunc repo
+        getExecutable (workflow_name, event_name) message sendFunc repo
     | _ ->
         (repo, "Unknown event command gotten!", 400)
 

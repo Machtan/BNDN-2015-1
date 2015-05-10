@@ -84,17 +84,19 @@ let check_if_executable (eventName : EventName) (user: string)
         (sendFunc : SendFunc<Repository>) (repository : Repository)
         : ReadResult<ExecutableState> =
     let workflow_name, _ = eventName
+    //printfn "EXECHECK: Checking if %A is executable (wf: %s)" eventName workflow_name
     // Check if the user can actually execute this
     let (_, answer, status) = send (GetUserRoles(user, workflow_name)) sendFunc repository
+    let user_found = check_if_positive status
     let roles =
-        if check_if_positive status then
+        if user_found then
             Set.ofArray (answer.Split ',')
         else
+            printfn "EXECHECK: User '%s' not found: '%s'" user answer
             Set.empty
-    let role_result = check_roles eventName roles repository
     let event_result = get_event eventName repository
-    match role_result, event_result with
-    | ReadResult.Ok(true), ReadResult.Ok((event, false)) ->
+    match event_result with
+    | ReadResult.Ok((event, false)) ->
 
         let onlyConditions x =
             let typ, _ = x
@@ -115,13 +117,10 @@ let check_if_executable (eventName : EventName) (user: string)
         else
             ReadResult.Ok(ExecutableState.NotExecutable)
 
-    | ReadResult.Ok(false), _ ->
-        ReadResult.Ok(ExecutableState.Unauthorized)
-
-    | _, ReadResult.Ok((_, true)) ->
+    | ReadResult.Ok((_, true)) ->
         ReadResult.Ok(ExecutableState.Locked)
 
-    | NotFound(err), _ | _, NotFound(err) ->
+    | NotFound(err) ->
         NotFound(err)
 
 /// Checks if given event is lock'et
