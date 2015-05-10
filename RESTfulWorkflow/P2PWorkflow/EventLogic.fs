@@ -140,28 +140,51 @@ let check_condition (eventName : EventName) (repository : Repository) : ReadResu
     | NotFound(error) ->
         NotFound(error)
 
+// Prints the lock state of the given repository
+let print_lock_state (repo: Repository) =
+    let check_folder workflow map statelist =
+        let inner_folder event (locked, _) statelist =
+            if locked then (workflow, event)::statelist
+            else statelist
+        Map.foldBack inner_folder map statelist
+    let event_state = Map.foldBack check_folder repo.events []
+    printfn "LOCK STATE: %A" event_state
+
 // Try to lock them all
 let lock_all (events_to_lock: Set<EventName>) (sendFunc: SendFunc<Repository>)
         (repo: Repository) : bool * Repository =
     let inner event (can_continue, locked_events, locked_state) =
         if can_continue then
-            let (state, resp, status) = send (Lock(event)) sendFunc locked_state
+            printfn "Lock before send:"
+            print_lock_state locked_state
+            let (new_state, resp, status) = send (Lock(event)) sendFunc locked_state
+            printfn "Lock after send:"
+            print_lock_state new_state
             if check_if_positive status
-            then (true, Set.add event locked_events, state)
-            else (false, locked_events, locked_state)
-        else (can_continue, locked_events, locked_state)
+            then
+                (true, Set.add event locked_events, new_state)
+            else
+                printfn "LOCK ERROR: Could not lock '%A' | %d | '%s'!" event status resp
+                (false, locked_events, locked_state)
+        else
+            (can_continue, locked_events, locked_state)
 
     // TODO: Send this status further
-    let (status, unlockSet, updated_state) = Set.foldBack inner events_to_lock (true, Set.empty, repo)
-    if status then
+    let (succesfully_locked, unlockSet, updated_state) =
+        Set.foldBack inner events_to_lock (true, Set.empty, repo)
+    printfn "LOCK ALL RESULT: %A -> %A" succesfully_locked unlockSet
+    print_lock_state updated_state
+    if succesfully_locked then
         true, updated_state
     else
         let lock_succesful event =
-            let (state, resp, status) = send (Lock(event)) sendFunc repo
+            let (state, resp, status) = send (Unlock(event)) sendFunc repo
             check_if_positive status
         if Set.forall lock_succesful unlockSet then
             false, repo // Give the old back
-        else failwith "ERROR: Could not remove locks after failed execution"
+        else
+            printfn "LOCK ERROR: Could not remove all locks after failed execution"
+            false, repo
 
 // Updates the state of the given event. Used for a folding loop in execute
 let update_all (relations: Set<Relation>) (send_func: SendFunc<Repository>)
@@ -207,6 +230,7 @@ let unlock_all (events: Set<EventName>) (send_func: SendFunc<Repository>)
         if succesful && (check_if_positive status) then
             (true, new_repo)
         else
+            printfn "UNLOCK ERROR: Could not unlock '%A' | %d | '%s'" event status resp
             (false, new_repo)
 
     Set.foldBack unlock events (true, state)
@@ -318,12 +342,13 @@ let lock_event (eventName : EventName) (repository : Repository) : Result =
     let workflow, name = eventName
     let inner (x : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name x with
-            | Some(x') ->
-                let lock, event = x'
-                if not lock
-                then MapOk(Map.add name (true, event) x)
-                else MapErr(LockConflict)
-            | None -> MapErr(MissingEvent)
+        | Some((locked, event)) ->
+            if not locked then
+                MapOk(Map.add name (true, event) x)
+            else
+                MapErr(LockConflict)
+        | None ->
+            MapErr(MissingEvent)
 
     update_inner_map workflow inner repository
 
@@ -332,12 +357,13 @@ let unlock_event (eventName : EventName) (repository : Repository) : Result =
     let workflow, name = eventName
     let inner (x : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name x with
-            | Some(x') ->
-                let lock, event = x'
-                if lock
-                then MapOk(Map.add name (false, event) x)
-                else MapErr(LockConflict)
-            | None -> MapErr(MissingEvent)
+        | Some((locked, event)) ->
+            if locked then
+                MapOk(Map.add name (false, event) x)
+            else
+                MapErr(LockConflict)
+        | None ->
+            MapErr(MissingEvent)
 
     update_inner_map workflow inner repository
 

@@ -178,9 +178,9 @@ let show_status_from_workflow (workflow: Workflow) =
     let print_event_status (event: Event) =
         let executable = if event.executable then "->" else "| "
         let pending = if event.pending then "!" else " "
-        let executed = if event.executed then "x" else pending
-        let name = if event.included then " " + event.name else "(" + event.name + ")"
-        printfn "%s %s %s" executable executed name
+        let executed = if event.executed then "x" else " "
+        let included = if event.included then "i" else " "
+        printfn "%s %s%s%s %s" executable included pending executed event.name
     List.iter print_event_status workflow
 
 // Shows the state of the active workflow
@@ -253,9 +253,9 @@ let MAIN_ACTIONS: (string * string * (State -> State)) list = [
     ("2", "Change user", change_user);
     ("3", "Show status", show_status);
     ("4", "Execute events", fun state -> execute_event state true);
-    ("7", "Show logs", print_logs);
-    ("8", "Debug", debug_state);
-    ("9", "Exit program", exit_program);
+    ("l", "Show logs", print_logs);
+    ("d", "Debug", debug_state);
+    ("q", "Exit program", exit_program);
 ]
 
 // The main loop

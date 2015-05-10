@@ -163,16 +163,16 @@ let addRelation (relation: RelationType) (connection: Connection)
         match connection with
         | To(a, b) -> sprintf "to %A from %A" b a
         | From(a, b) -> sprintf "from %A to %A" a b
-    printfn "RELATION: Adding %A %s" relation con_desc
+    //printfn "RELATION: Adding %A %s" relation con_desc
     let response =
         match connection with
         | To(a, b) -> add_relation_to a relation b send_func repo
         | From(a, b) -> add_relation_from a relation b repo
     match (response) with
     | Result.Ok(updated_repo) ->
-        match connection with
-        | From(a, b) | To(a, b) ->
-            printfn "RELATION: Updated events: %A / %A" (get_event a updated_repo) (get_event b updated_repo)
+        //match connection with
+        //| From(a, b) | To(a, b) ->
+        //    printfn "RELATION: Updated events: %A / %A" (get_event a updated_repo) (get_event b updated_repo)
         (updated_repo, "Created.", 201)
     | Result.Unauthorized       -> (repo, "Unauthorized", 401)
     | Result.NotExecutable      -> (repo, "The event is not executable.", 400)
@@ -309,6 +309,16 @@ let set_attribute (event: EventName) (attribute: SetAttribute)
         | Result.MissingWorkflow    -> (repo, "Workflow is missing", 404)
         | Result.Error(message)     -> (repo, message, 400)
 
+// Prints the lock state of the given repository
+let print_lock_state (repo: Repository) =
+    let check_folder workflow map statelist =
+        let inner_folder event (locked, _) statelist =
+            if locked then (workflow, event)::statelist
+            else statelist
+        Map.foldBack inner_folder map statelist
+    let event_state = Map.foldBack check_folder repo.events []
+    printfn "LOCK STATE: %A" event_state
+
 // Matches the given event and tries to handle the request
 let handle_event (workflow_name: string) (event_name: string) (attribute: string)
         (meth: string) (message: string) (repo: Repository)
@@ -342,9 +352,13 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
         | _ ->
             (repo, "Invalid include state: Must be 'true' or 'false'", 400)
     | "PUT", "lock" ->
+        printfn "> REPO Lock Before:"
+        print_lock_state repo
         match lock_event (workflow_name, event_name) repo with
-        | Result.Ok(updated_state) ->
-            updated_state, "Locked!", 200
+        | Result.Ok(updated_repo) ->
+            printfn "> REPO Lock After:"
+            print_lock_state updated_repo
+            updated_repo, "Locked!", 200
         | Result.LockConflict ->
             repo, "Event already locked!", 400
         | Result.MissingEvent ->
@@ -353,8 +367,12 @@ let handle_event (workflow_name: string) (event_name: string) (attribute: string
             repo, (sprintf "Got error %A" err), 400
     | "PUT", "unlock" ->
         match unlock_event (workflow_name, event_name) repo with
-        | Result.Ok(updated_state) ->
-            updated_state, "Unlocked!", 200
+        | Result.Ok(updated_repo) ->
+            printfn "REPO Unlock:"
+            print_lock_state updated_repo
+            updated_repo, "Unlocked!", 200
+        | Result.LockConflict ->
+            repo, "The event was not locked!", 400
         | err ->
             repo, (sprintf "Got error %A" err), 400
     | "GET", "executable" ->
