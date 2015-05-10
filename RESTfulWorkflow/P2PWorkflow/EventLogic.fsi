@@ -6,7 +6,7 @@ open Repository_types
 //Create
 
 /// Creates and returns a new event from a name and a start state
-val create_event: EventName -> EventState -> bool -> Repository -> Result
+val create_event: EventName -> EventState -> string list -> bool -> Repository -> Result
 
 //Read
 

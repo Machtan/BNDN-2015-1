@@ -81,7 +81,8 @@ let getExecutable (event: string) (workflow: string) (user: string)
         | ExecutableState.Executable ->
             (repo, "true", 200)
         | ExecutableState.Unauthorized ->
-            (repo, "'%s' is not authorized to execute this", 402)
+            let message = sprintf "'%s' is not authorized to execute this" user
+            (repo, message, 402)
         | ExecutableState.NotExecutable ->
             (repo, "false", 200)
         | ExecutableState.Locked ->
@@ -138,7 +139,7 @@ let createEvent (eventName: string) (workflowName: string) (message: string)
         //printfn "> Creating event '%s' with state %A..." eventName initialState
         let locked = des 3
         let event = (workflowName,eventName): EventName
-        let response = create_event event initialState locked repository
+        let response = create_event event initialState roles locked repository
         match (response) with
         | Result.Ok(r) -> (r,"Created.", 201)
         | Result.Unauthorized -> (repository,"Unauthorized", 401)

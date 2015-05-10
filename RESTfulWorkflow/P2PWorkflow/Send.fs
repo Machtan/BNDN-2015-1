@@ -41,7 +41,7 @@ let send (message : Message) (sendFunc : SendFunc<Repository>) (repository : Rep
         sendFunc url "PUT" boo repository
 
     | GetUserRoles(userName, workflowName)    ->
-        sendFunc (sprintf "user/%s/workflow/%s/roles" userName workflowName) "GET" "" repository
+        sendFunc (sprintf "user/%s/roles/%s" userName workflowName) "GET" "" repository
 
     | AddFromRelation(fromEvent, relationTyp, toEvent) ->
         let from_wf, from_event = fromEvent

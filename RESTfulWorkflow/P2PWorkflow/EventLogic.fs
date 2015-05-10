@@ -49,22 +49,23 @@ let get_event (eventName : EventName) (repository : Repository) : ReadResult<Eve
             NotFound(NotFoundError.Workflow)
 
 /// Creates and returns a new event from a name and a start state
-let create_event (eventName : EventName) (state : EventState) (lock : bool) (repository : Repository) : Result =
-    let n = {
-            name        = eventName;
-            executed    = state.executed;
-            included    = state.included;
-            pending     = state.pending;
-            toRelations = Set.empty;
-            fromRelations = Set.empty;
-            roles       = Set.empty;
-        }
+let create_event (eventName : EventName) (state : EventState)
+        (roles: string list) (locked : bool) (repository : Repository) : Result =
+    let event: Event = {
+        name        = eventName;
+        executed    = state.executed;
+        included    = state.included;
+        pending     = state.pending;
+        toRelations = Set.empty;
+        fromRelations = Set.empty;
+        roles       = Set.ofList roles;
+    }
     let workflow, name = eventName
 
     // TODO Maybe check whether the workflow exists somewhere
     // before adding events
 
-    update_inner_map workflow (fun x -> MapOk(Map.add name (lock, n) x)) repository
+    update_inner_map workflow (fun x -> MapOk(Map.add name (locked, event) x)) repository
 
 /// Check if given event have one of given roles
 let check_roles (eventName : EventName) (user_roles : Roles) (repository : Repository) : ReadResult<bool> =
@@ -82,7 +83,7 @@ let check_roles (eventName : EventName) (user_roles : Roles) (repository : Repos
 let check_if_executable (eventName : EventName) (user: string)
         (sendFunc : SendFunc<Repository>) (repository : Repository)
         : ReadResult<ExecutableState> =
-    let _, workflow_name = eventName
+    let workflow_name, _ = eventName
     // Check if the user can actually execute this
     let (_, answer, status) = send (GetUserRoles(user, workflow_name)) sendFunc repository
     let roles =
@@ -385,7 +386,7 @@ let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>) (repo
                 update_inner_map workflow inner removed_state
             else LockConflict
         else LockConflict
-        
+
     | ReadResult.Ok((event, true)) ->
         LockConflict
 
