@@ -47,10 +47,22 @@ type Event = {
     roles: Roles;
 }
 
-// Used for checking in the rest API
-type Connection =
-| From of EventName * EventName // From A to B
-| To   of EventName * EventName // From A to B
+// An error type for events not there
+type NotFoundError =
+| Event
+| Workflow
+
+// A result type for execution
+type ExecutableState =
+| Executable
+| Unauthorized
+| NotExecutable
+| Locked
+
+// A type for reads of things on an event
+type ReadResult<'a> =
+| Ok of 'a
+| NotFound of NotFoundError
 
 type Repository = {
     // workflow name: event name: (locked, state)
@@ -92,11 +104,6 @@ type Result =
     | MissingWorkflow
     | LockConflict
     | Error of string
-
-type ExecutableResult =
-| Executable
-| Unauthorized
-| NotExecutable
 
 type Message =
     | GetIfCondition            of EventName

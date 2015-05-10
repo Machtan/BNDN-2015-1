@@ -35,16 +35,18 @@ let update_inner_event (eventName : EventName) (func : Event -> UpdateEventResul
 
     update_inner_map workflow inner repository
 
-let get_event (eventName : EventName) (repository : Repository) : Event =
+// Attempts to get an event in the repository
+let get_event (eventName : EventName) (repository : Repository) : ReadResult<Event * bool> =
     let workflow, name = eventName
     match repository.events.TryFind workflow with
         | Some(x) ->
             match x.TryFind name with
-            | Some(x) ->
-                let _, event = x
-                event
-            | None -> failwith "Missing Event"
-        | None -> failwith "Missing Workflow"
+            | Some((locked, event)) ->
+                ReadResult.Ok((event, locked))
+            | None ->
+                NotFound(NotFoundError.Event)
+        | None ->
+            NotFound(NotFoundError.Workflow)
 
 /// Creates and returns a new event from a name and a start state
 let create_event (eventName : EventName) (state : EventState) (lock : bool) (repository : Repository) : Result =
@@ -64,23 +66,22 @@ let create_event (eventName : EventName) (state : EventState) (lock : bool) (rep
 
     update_inner_map workflow (fun x -> MapOk(Map.add name (lock, n) x)) repository
 
-/// Return name and state of given event
-let get_event_state (eventName : EventName) (repository : Repository) : EventState =
-    let _, name = eventName
-    let event = get_event eventName repository
-    {executed = event.executed; pending = event.pending; included = event.included;}
-
 /// Check if given event have one of given roles
-let check_roles (eventName : EventName) (roles : Roles) (repository : Repository) : bool =
-    let event = get_event eventName repository
-    if not (Set.isEmpty event.roles)
-    then Set.exists (fun role -> Set.exists (fun event_role -> event_role = role) event.roles) roles
-    else true
+let check_roles (eventName : EventName) (user_roles : Roles) (repository : Repository) : ReadResult<bool> =
+    match get_event eventName repository with
+    | ReadResult.Ok(event, _) ->
+        if not (Set.isEmpty event.roles) then
+            let has_common_role = not (Set.isEmpty (Set.intersect event.roles user_roles))
+            ReadResult.Ok(has_common_role)
+        else
+            ReadResult.Ok(true)
+    | NotFound(error) ->
+        NotFound(error)
 
 /// Checks if given event is executeble
-let check_if_executeble (eventName : EventName) (user: string)
+let check_if_executable (eventName : EventName) (user: string)
         (sendFunc : SendFunc<Repository>) (repository : Repository)
-        : ExecutableResult =
+        : ReadResult<ExecutableState> =
     let _, workflow_name = eventName
     // Check if the user can actually execute this
     let (_, answer, status) = send (GetUserRoles(user, workflow_name)) sendFunc repository
@@ -89,8 +90,10 @@ let check_if_executeble (eventName : EventName) (user: string)
             Set.ofArray (answer.Split ',')
         else
             Set.empty
-    if check_roles eventName roles repository then
-        let event = get_event eventName repository
+    let role_result = check_roles eventName roles repository
+    let event_result = get_event eventName repository
+    match role_result, event_result with
+    | ReadResult.Ok(true), ReadResult.Ok((event, false)) ->
 
         let onlyConditions x =
             let typ, _ = x
@@ -105,34 +108,37 @@ let check_if_executeble (eventName : EventName) (user: string)
         if event.included then
             let fromRelations = Set.filter onlyConditions event.fromRelations
             if Set.forall checkConditions fromRelations then
-                ExecutableResult.Executable
+                ReadResult.Ok(ExecutableState.Executable)
             else
-                ExecutableResult.NotExecutable
+                ReadResult.Ok(ExecutableState.NotExecutable)
         else
-            ExecutableResult.NotExecutable
-    else ExecutableResult.Unauthorized
+            ReadResult.Ok(ExecutableState.NotExecutable)
+
+    | ReadResult.Ok(false), _ ->
+        ReadResult.Ok(ExecutableState.Unauthorized)
+
+    | _, ReadResult.Ok((_, true)) ->
+        ReadResult.Ok(ExecutableState.Locked)
+
+    | NotFound(err), _ | _, NotFound(err) ->
+        NotFound(err)
 
 /// Checks if given event is lock'et
-let check_if_locked (eventName : EventName) (repository : Repository) : bool =
-    let workflow, name = eventName
-    match Map.tryFind workflow repository.events with
-    | Some(innerMap)   ->
-        match Map.tryFind name innerMap with
-            | Some(lockEvent)  ->
-                let lock, _ = lockEvent
-                lock
-            | None -> failwith "Missing Event"
-    | None -> failwith "Missing Workflow"
+let check_if_locked (eventName : EventName) (repository : Repository) : ReadResult<bool> =
+    match get_event eventName repository with
+    | ReadResult.Ok((_, locked)) ->
+        ReadResult.Ok(locked)
+    | NotFound(error) ->
+        NotFound(error)
 
 /// Checks if given event is executed / excluded
-let check_condition (eventName : EventName) (repository : Repository) : bool =
-    let event = get_event eventName repository
-    if event.included = true
-    then
-        if event.executed = true
-        then true
-        else false
-    else true
+// (whether the condition is fulfilled)
+let check_condition (eventName : EventName) (repository : Repository) : ReadResult<bool> =
+    match get_event eventName repository with
+    | ReadResult.Ok((event, _)) ->
+        ReadResult.Ok(event.executed || (not event.included))
+    | NotFound(error) ->
+        NotFound(error)
 
 // Try to lock them all
 let lock_all (events_to_lock: Set<EventName>) (sendFunc: SendFunc<Repository>)
@@ -201,42 +207,61 @@ let unlock_all (events: Set<EventName>) (send_func: SendFunc<Repository>)
 /// Executes and returns the given event if the given user has the required role
 let execute (eventName : EventName) (userName : UserName)
         (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    match check_if_executeble eventName userName sendFunc repository with
-    | ExecutableResult.Executable ->
-        let event = get_event eventName repository
-        // Find out which events need to be locked before executing this one
-        let onlyNecessary x =
-          let typ, _ = x
-          typ = Condition || typ = Exclusion
-        let setSplit acc x =
-            let _, event = x
-            Set.add event acc
-        let necessary_from_relations = Set.filter onlyNecessary event.fromRelations
-        let necessary_relations = Set.union necessary_from_relations event.toRelations
-        let events_to_lock = Set.fold setSplit Set.empty necessary_relations
-        let (succesfully_locked, locked_state) = lock_all events_to_lock sendFunc repository
-        if succesfully_locked then
-            let (succesfully_updated, updated_repo) =
-                update_all event.toRelations sendFunc locked_state
-            if succesfully_updated then
-                let (succesfully_unlocked, unlocked_repo) =
-                    unlock_all events_to_lock sendFunc updated_repo
-                if succesfully_unlocked then
-                    // Log this shit!
-                    let (logged_repo, resp, status) =
-                        send (Log(eventName, DateTime.Now, userName)) sendFunc unlocked_repo
-                    let inner (event : Event) : UpdateEventResult =
-                        EventOk({event with executed = true; pending = false})
-                    update_inner_event eventName inner logged_repo
-                else Error("ERROR: It's not possible to unlock all events!!!")
-            else Error("ERROR: It's not possible to change all the states!!!")
-        else LockConflict
+    match check_if_executable eventName userName sendFunc repository with
+    | ReadResult.Ok(executable_state) ->
+        let event_result = get_event eventName repository
+        match event_result, executable_state with
+        | ReadResult.Ok(event, _), ExecutableState.Executable ->
+            // Find out which events need to be locked before executing this one
+            let onlyNecessary x =
+              let typ, _ = x
+              typ = Condition || typ = Exclusion
+            let setSplit acc x =
+                let _, event = x
+                Set.add event acc
+            let necessary_from_relations = Set.filter onlyNecessary event.fromRelations
+            let necessary_relations = Set.union necessary_from_relations event.toRelations
+            let events_to_lock = Set.fold setSplit Set.empty necessary_relations
+            let (succesfully_locked, locked_state) = lock_all events_to_lock sendFunc repository
+            if succesfully_locked then
+                let (succesfully_updated, updated_repo) =
+                    update_all event.toRelations sendFunc locked_state
+                if succesfully_updated then
+                    let (succesfully_unlocked, unlocked_repo) =
+                        unlock_all events_to_lock sendFunc updated_repo
+                    if succesfully_unlocked then
+                        // Log this shit!
+                        let (logged_repo, resp, status) =
+                            send (Log(eventName, DateTime.Now, userName)) sendFunc unlocked_repo
+                        let inner (event : Event) : UpdateEventResult =
+                            EventOk({event with executed = true; pending = false})
+                        update_inner_event eventName inner logged_repo
+                    else Error("ERROR: It's not possible to unlock all events!!!")
+                else Error("ERROR: It's not possible to change all the states!!!")
+            else LockConflict
 
-    | ExecutableResult.NotExecutable ->
-        Result.NotExecutable
+        | ReadResult.NotFound(error), _ ->
+            match error with
+            | NotFoundError.Workflow ->
+                Result.MissingWorkflow
+            | NotFoundError.Event ->
+                Result.MissingEvent
 
-    | ExecutableResult.Unauthorized ->
-        Result.NotExecutable
+        | _, ExecutableState.NotExecutable ->
+            Result.NotExecutable
+
+        | _, ExecutableState.Unauthorized ->
+            Result.Unauthorized
+
+        | _, ExecutableState.Locked ->
+            Result.LockConflict
+
+    | NotFound(error) ->
+        match error with
+        | NotFoundError.Workflow ->
+            Result.MissingWorkflow
+        | NotFoundError.Event ->
+            Result.MissingEvent
 
 /// Adds given roles to given event and returns the result
 let add_event_roles (eventName : EventName) (roles : Roles) (repository : Repository) : Result =
@@ -327,38 +352,50 @@ let remove_relation_from (fromEvent : EventName) (relations : RelationType) (toE
 let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
     //Dummy
     let workflow, eName = eventName
-    let event = get_event eventName repository
-    printfn "Removing event '%s' from workflow '%s'..." eName workflow
+    match get_event eventName repository with
+    | ReadResult.Ok((event, false)) ->
+        printfn "Removing event '%s' from workflow '%s'..." eName workflow
 
-    let remove_to_relation (reltype, target) (succesful, removed_state) =
-        let (new_state, resp, status) = send (RemoveToRelation(eventName, reltype, target)) sendFunc removed_state
-        if succesful && (check_if_positive status) then (true, new_state)
-        else (false, new_state)
-
-    let (succesfully_removed_to_relations, removed_to_state) =
-        Set.foldBack remove_to_relation event.toRelations (true, repository)
-
-    if succesfully_removed_to_relations then
-
-        let remove_from_relation (reltype, target) (succesful, removed_state) =
-            let (new_state, resp, status) = send (RemoveFromRelation(eventName, reltype, target)) sendFunc removed_state
+        let remove_to_relation (reltype, target) (succesful, removed_state) =
+            let (new_state, resp, status) = send (RemoveToRelation(eventName, reltype, target)) sendFunc removed_state
             if succesful && (check_if_positive status) then (true, new_state)
             else (false, new_state)
 
-        let (succesfully_removed_from_relations, removed_state) =
-            Set.foldBack remove_from_relation event.fromRelations (true, removed_to_state)
+        let (succesfully_removed_to_relations, removed_to_state) =
+            Set.foldBack remove_to_relation event.toRelations (true, repository)
 
-        if succesfully_removed_from_relations then
-            let workflow, name = eventName
+        if succesfully_removed_to_relations then
 
-            let inner (x : Map<string, bool*Event>) : UpdateMapResult =
-                match Map.tryFind name x with
-                | Some(_)   -> MapOk(Map.remove name x)
-                | None      -> MapErr(MissingEvent)
+            let remove_from_relation (reltype, target) (succesful, removed_state) =
+                let (new_state, resp, status) = send (RemoveFromRelation(eventName, reltype, target)) sendFunc removed_state
+                if succesful && (check_if_positive status) then (true, new_state)
+                else (false, new_state)
 
-            update_inner_map workflow inner removed_state
+            let (succesfully_removed_from_relations, removed_state) =
+                Set.foldBack remove_from_relation event.fromRelations (true, removed_to_state)
+
+            if succesfully_removed_from_relations then
+                let workflow, name = eventName
+
+                let inner (x : Map<string, bool*Event>) : UpdateMapResult =
+                    match Map.tryFind name x with
+                    | Some(_)   -> MapOk(Map.remove name x)
+                    | None      -> MapErr(MissingEvent)
+
+                update_inner_map workflow inner removed_state
+            else LockConflict
         else LockConflict
-    else LockConflict
+        
+    | ReadResult.Ok((event, true)) ->
+        LockConflict
+
+    | NotFound(error) ->
+        match error with
+        | NotFoundError.Workflow ->
+            Result.MissingWorkflow
+        | NotFoundError.Event ->
+            Result.MissingEvent
+
 
 /// Removes given roles form given event and returns the result
 let remove_event_roles (eventName : EventName) (roles : Roles) (repository : Repository) : Result =
