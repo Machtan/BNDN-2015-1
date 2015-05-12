@@ -1,6 +1,7 @@
 module Migrate
 
 open Repository_types
+open Pastry
 
 type Command = {
     path: string;
@@ -9,8 +10,8 @@ type Command = {
 }
 
 // Gets the commands to migrate the needed parts from this repo
-val get_migratable_commands: Repository -> (string -> bool) -> Repository * Command list
+val get_migratable_commands: (string -> bool) -> PastryState<Repository> -> PastryState<Repository> * Command list
 
 // Gets all the migration commands (YES!)
-val get_all_migration_commands: Repository -> Command list
+val get_all_migration_commands: PastryState<Repository> -> Command list
 

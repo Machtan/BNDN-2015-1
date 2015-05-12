@@ -1,6 +1,7 @@
 module Migrate
 
 open Repository_types
+open Pastry
 
 type Command = {
     path: string;
@@ -60,8 +61,8 @@ let print_cmd (command: Command) =
     printfn "%-5s | %-50s | %s" command.meth command.path command.data
 
 // Gets the commands to migrate the needed parts from this repo
-let get_migratable_commands (repo: Repository) (predicate: string -> bool)
-    : Repository * Command list =
+let get_migratable_commands (predicate: string -> bool)
+    (state: PastryState<Repository>): PastryState<Repository> * Command list =
     // Add the event creation commands to the back of the list
     // And find out which events to not migrate
     let event_folder workflow events (event_map, cmds) =
@@ -78,7 +79,8 @@ let get_migratable_commands (repo: Repository) (predicate: string -> bool)
             Map.add workflow wf_events event_map, i_cmds
         else
             event_map, i_cmds
-    let (events, event_cmds) = Map.foldBack event_folder repo.events (Map.empty, [])
+    let (events, event_cmds) =
+        Map.foldBack event_folder state.data.events (Map.empty, [])
 
     // Add the workflow creation commands before the events
     let workflow_folder (name: string) (workflow: Workflow) (updated_workflows, cmds) =
@@ -91,7 +93,8 @@ let get_migratable_commands (repo: Repository) (predicate: string -> bool)
             updated_workflows, updated_commands
         else
             Map.add name workflow updated_workflows, cmds
-    let (workflows, workflow_cmds) = Map.foldBack workflow_folder repo.workflows (Map.empty, event_cmds)
+    let (workflows, workflow_cmds) =
+        Map.foldBack workflow_folder state.data.workflows (Map.empty, event_cmds)
 
     // Add the user creation commands before the workflows
     let user_folder (name: string) (user: User) (users, cmds) = // string User
@@ -105,12 +108,14 @@ let get_migratable_commands (repo: Repository) (predicate: string -> bool)
             users, updated_commands
         else
             (Map.add name user users), cmds
-    let (users, all_cmds) = Map.foldBack user_folder repo.users (Map.empty, workflow_cmds)
+    let (users, all_cmds) =
+        Map.foldBack user_folder state.data.users (Map.empty, workflow_cmds)
 
-    let updated_repo = { repo with events = events; workflows = workflows; users = users; }
-    updated_repo, List.map get_command all_cmds
+    let new_data = { state.data with events = events; workflows = workflows; users = users; }
+    let new_state = { state with data = new_data; }
+    new_state, List.map get_command all_cmds
 
 // Gets all the migration commands (YES!)
-let get_all_migration_commands (repo: Repository) : Command list =
-    let (_, cmds) = get_migratable_commands repo (fun _ -> true)
+let get_all_migration_commands (state: PastryState<Repository>) : Command list =
+    let (_, cmds) = get_migratable_commands (fun _ -> true) state
     cmds

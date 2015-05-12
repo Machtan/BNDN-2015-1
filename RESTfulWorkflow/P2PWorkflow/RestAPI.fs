@@ -196,7 +196,7 @@ let delete_relation (relation: RelationType) (connection: Connection)
 // Creates a new workflow
 let createWorkflow (workflow: string) (state: PastryState<Repository>)
         : ResourceResponse<Repository> =
-    handle_result |> "Workflow created"|> create_workflow workflow state
+    handle_result <| "Workflow created" <| create_workflow workflow state
 
 // Creates a new repository
 let create_repository () : Repository =
@@ -207,87 +207,87 @@ let handle_user (action: UserAction) (state: PastryState<Repository>)
         : ResourceResponse<Repository> =
     match action with
     | UserAction.Create(user) ->
-        match create_user user repo with
-        | CreateUserResult.Ok(updated_repo) ->
-            updated_repo, "User created!", 200
+        match create_user user state with
+        | CreateUserResult.Ok(new_state) ->
+            resource_response new_state "User created!" 200
         | CreateUserResult.UserAlreadyExists ->
-            repo, "User already exists!", 400
+            resource_response state "User already exists!" 400
 
     | UserAction.Delete(user) ->
-        match delete_user user repo with
-        | DeleteUserResult.Ok(updated_repo) ->
-            updated_repo, "User deleted!", 200
+        match delete_user user state with
+        | DeleteUserResult.Ok(new_state) ->
+            resource_response new_state "User deleted!" 200
         | DeleteUserResult.UserNotFound ->
-            repo, "User not found!", 404
+            resource_response state "User not found!" 404
 
     | UserAction.GetRoles(user, workflow) ->
-        let roles = get_user_roles user workflow repo
+        let roles = get_user_roles user workflow state
         let message = String.concat "," roles
-        repo, message, 200
+        resource_response state message 200
 
     | UserAction.AddRoles(user, workflow, roles) ->
-        match add_user_roles user workflow roles repo with
-        | AddRolesResult.Ok(updated_repo) ->
-            updated_repo, "Roles added!", 200
+        match add_user_roles user workflow roles state with
+        | AddRolesResult.Ok(new_state) ->
+            resource_response new_state "Roles added!" 200
         | AddRolesResult.UserNotFound ->
-            repo, "User not found", 404
+            resource_response state "User not found" 404
 
     | UserAction.RemoveRoles(user, workflow, roles) ->
-        match remove_user_roles user workflow roles repo with
-        | RemoveRolesResult.Ok(updated_repo) ->
-            updated_repo, "Roles removed!", 200
+        match remove_user_roles user workflow roles state with
+        | RemoveRolesResult.Ok(new_state) ->
+            resource_response new_state "Roles removed!" 200
         | RemoveRolesResult.NoRolesForWorkflow ->
-            repo, "The user has no roles for that workflow", 200
+            resource_response state "The user has no roles for that workflow" 200
         | RemoveRolesResult.UserNotFound ->
-            repo, "The user could not be found", 404
+            resource_response state "The user could not be found" 404
 
 // Handles requests for the givien workflow (getting the events in it)
-let handle_workflow (workflow: string) (meth: string) (data: string) (repo: Repository)
+let handle_workflow (workflow: string) (meth: string) (data: string)
+        (send_func: SendFunc<Repository>) (state: PastryState<Repository>)
         : ResourceResponse<Repository> =
     match meth with
     | "GET" ->
-        match get_workflow_events workflow repo with
+        match get_workflow_events workflow state with
         | Some(events) ->
-            repo, (String.concat "," events), 200
+            resource_response state (String.concat "," events) 200
         | None ->
             let msg = sprintf "The workflow '%s' was not found!" workflow
-            repo, msg, 404
+            resource_response state msg 404
 
     | "POST" ->
-        createWorkflow workflow repo
+        createWorkflow workflow state
 
     | "DELETE" ->
-        match delete_workflow workflow repo with
-        | Some(updated_state) ->
-            updated_state, "Deleted", 200
+        match delete_workflow workflow send_func state with
+        | Some(new_state) ->
+            resource_response new_state "Deleted" 200
         | None ->
             let msg = sprintf "The workflow '%s' was not found!" workflow
-            repo, msg, 404
+            resource_response state msg 404
 
     | "PUT" ->
-        match add_event_to_workflow (workflow, data) repo with
-        | Some(updated_state) ->
-            updated_state, "Event added!", 200
+        match add_event_to_workflow (workflow, data) state with
+        | Some(new_state) ->
+            resource_response new_state "Event added!" 200
         | None ->
             let msg = sprintf "The workflow '%s' was not found!" workflow
-            repo, msg, 404
+            resource_response state msg 404
     | _ ->
-        repo, "Unsupported workflow operation", 400
+        resource_response state "Unsupported workflow operation" 400
 
 // Sets the attribute of an event
 let set_attribute (event: EventName) (attribute: SetAttribute)
-        (send_func: SendFunc<Repository>) (repo: Repository)
+        (send_func: SendFunc<Repository>) (state: PastryState<Repository>)
         : ResourceResponse<Repository> =
         let result =
             match attribute with
             | SetAttribute.Pending ->
-                set_pending event true repo
+                set_pending event true state
             | SetAttribute.Included ->
-                set_included event true repo
+                set_included event true state
             | SetAttribute.Excluded ->
-                set_included event false repo
+                set_included event false state
         handle_result <| "Created" <| result
-
 
 // Prints the lock state of the given repository
 let print_lock_state (repo: Repository) =
@@ -300,236 +300,238 @@ let print_lock_state (repo: Repository) =
     printfn "LOCK STATE: %A" event_state
 
 // Matches the given event and tries to handle the request
-let handle_event (workflow_name: string) (event_name: string) (attribute: string)
-        (meth: string) (message: string) (repo: Repository)
-        (sendFunc : SendFunc<Repository>) : ResourceResponse<Repository> =
+let handle_event (event: EventName) (attribute: string)
+        (meth: string) (message: string) (send_func : SendFunc<Repository>)
+        (state: PastryState<Repository>) : ResourceResponse<Repository> =
     // Find the event in this repository if it exists
     match meth, attribute with
     | "POST", "" ->
-        createEvent event_name workflow_name message repo
+        createEvent event message send_func state
     | "DELETE", "" ->
-        deleteEvent event_name workflow_name repo sendFunc
+        deleteEvent event send_func state
+
     | "GET", "executed" ->
-        getExecuted event_name workflow_name repo
+        getExecuted event state
     | "PUT", "executed" ->
-        setExecuted (workflow_name, event_name) message repo sendFunc
+        setExecuted event message send_func state
+
     | "GET", "pending" ->
-        getPending event_name workflow_name repo
+        getPending event state
     | "PUT", "pending" ->
         match message with
         | "true" ->
-            set_attribute (workflow_name, event_name) SetAttribute.Pending sendFunc repo
+            set_attribute event SetAttribute.Pending send_func state
         | _ ->
-            (repo, "Invalid pending state: Must be 'true'", 400)
+            resource_response state "Invalid pending state: Must be 'true'" 400
+
     | "GET", "included" ->
-        getIncluded event_name workflow_name repo
+        getIncluded event state
+
     | "PUT", "included" ->
         match message with
         | "true" ->
-            set_attribute (workflow_name, event_name) SetAttribute.Included sendFunc repo
+            set_attribute event SetAttribute.Included send_func state
         | "false" ->
-            set_attribute (workflow_name, event_name) SetAttribute.Excluded sendFunc repo
+            set_attribute event SetAttribute.Excluded send_func state
         | _ ->
-            (repo, "Invalid include state: Must be 'true' or 'false'", 400)
+            let msg = "Invalid include state: Must be 'true' or 'false'"
+            resource_response state msg 400
+
     | "PUT", "lock" ->
         printfn "> REPO Lock Before:"
-        print_lock_state repo
-        match lock_event (workflow_name, event_name) repo with
-        | Result.Ok(updated_repo) ->
-            printfn "> REPO Lock After:"
-            print_lock_state updated_repo
-            updated_repo, "Locked!", 200
-        | Result.LockConflict ->
-            repo, "Event already locked!", 400
-        | Result.MissingEvent ->
-            repo, "Event not found", 404
-        | err ->
-            repo, (sprintf "Got error %A" err), 400
+        print_lock_state state.data
+        handle_result <| "Locked" <| lock_event event state
+
     | "PUT", "unlock" ->
-        match unlock_event (workflow_name, event_name) repo with
-        | Result.Ok(updated_repo) ->
-            printfn "REPO Unlock:"
-            print_lock_state updated_repo
-            updated_repo, "Unlocked!", 200
-        | Result.LockConflict ->
-            repo, "The event was not locked!", 400
-        | err ->
-            repo, (sprintf "Got error %A" err), 400
+        handle_result <| "Unlocked" <| unlock_event event state
+
     | "GET", "executable" ->
-        getExecutable (workflow_name, event_name) message sendFunc repo
+        getExecutable event message send_func state
+
     | _ ->
-        (repo, "Unknown event command gotten!", 400)
+        resource_response state "Unknown event command gotten!" 400
 
 // Handles a request about the relation of an event
-let handle_relation (workflow_name: string) (event_name: string) (reltype: string)
-        (con_str: string) (meth: string) (message: string) (repo: Repository)
-        (sendFunc : SendFunc<Repository>) : ResourceResponse<Repository> =
+let handle_relation (event: EventName) (reltype: string)
+        (con_str: string) (meth: string) (message: string)
+        (send_func : SendFunc<Repository>) (state: PastryState<Repository>)
+        : ResourceResponse<Repository> =
     let args = split message ','
     if not ((List.length args) = 2) then
         let msg = sprintf "Invalid arguments: %A should be on the from <workflow>,<event>" message
-        (repo, msg, 400)
+        resource_response state msg 400
     else
         let rel =
             match reltype with
-            | "exclusion"   -> Some(Exclusion)
-            | "condition"   -> Some(Condition)
-            | "response"    -> Some(Response)
-            | "inclusion"   -> Some(Inclusion)
-            | _             -> None
+            | "exclusion" ->
+                Some(Exclusion)
+            | "condition" ->
+                Some(Condition)
+            | "response" ->
+                Some(Response)
+            | "inclusion" ->
+                Some(Inclusion)
+            | _  ->
+                None
 
         let data = (args.[0], args.[1])
 
         let con =
             match con_str with
-            | "to"      -> Some( To((workflow_name, event_name), data) )
-            | "from"    -> Some( From(data, (workflow_name, event_name)) )
-            | _         -> None
+            | "to" ->
+                Some( To(event, data) )
+            | "from" ->
+                Some( From(data, event) )
+            | _ ->
+                None
 
         match rel, con with
         | Some(relation), Some(connection) ->
             match meth with
             | "PUT" ->
-                addRelation relation connection sendFunc repo
+                addRelation relation connection send_func state
 
             | "DELETE" ->
-                delete_relation relation connection sendFunc repo
+                delete_relation relation connection send_func state
 
             | _ ->
-                (repo, "Invalid method for adding a relation", 400)
+                resource_response state "Invalid method for adding a relation" 400
 
         | None, _ ->
             let msg = sprintf "Invalid relation type '%s'" reltype
-            (repo, msg, 400)
+            resource_response state msg 400
 
         | _, None ->
             let msg = sprintf "Invalid connection '%s' should be 'to' or 'from'" con_str
-            (repo, msg, 400)
+            resource_response state msg 400
 
 // Handles a full migration (a node has died, and is being remade)
 let handle_full_migration (meth: string) (data: string)
-        (send_func: SendFunc<Repository>) (initial_state: Repository)
+        (send_func: SendFunc<Repository>) (state: PastryState<Repository>)
         : ResourceResponse<Repository> =
     if data = "" then
-        (initial_state, "Nothing to migrate", 200)
+        resource_response state "Nothing to migrate" 200
     else
         match meth with
         | "PUT" ->
             printfn ">>> Migrating........"
             let dead_repo = JsonConvert.DeserializeObject<Repository> data
-            let cmds = get_all_migration_commands dead_repo
-            let migrate cmd state =
-                let (new_state, resp, status) = send_func cmd.path cmd.meth cmd.data state
-                new_state
-            let updated_state = List.foldBack migrate cmds initial_state
+            let cmds = get_all_migration_commands { state with data = dead_repo; }
+            let migrate cmd new_state =
+                let result = send_func cmd.path cmd.meth cmd.data new_state
+                result.state
+            let new_state = List.foldBack migrate cmds state
             printfn ">>> Finished migrating!"
-            (updated_state, "Migrated!", 200)
+            resource_response new_state "Migrated!" 200
         | _ ->
-            (initial_state, "Bad method used: migrate requires PUT!", 400)
+            resource_response state "Bad method used: migrate requires PUT!" 400
 
 // Handles the migration of resources on this repository that are closer to
 // a newly-joined node
 let handle_partial_migration (meth: string) (from_guid: string) (to_guid: string)
-        (send_func: SendFunc<Repository>) (initial_state: Repository)
+        (send_func: SendFunc<Repository>) (state: PastryState<Repository>)
         : ResourceResponse<Repository> =
     match meth with
     | "PUT" ->
         let should_migrate path = belongs_on_other from_guid path to_guid
-        let (updated_state, cmds) = get_migratable_commands initial_state should_migrate
-        let migrate cmd state =
-            let (new_state, resp, status) = send_func cmd.path cmd.meth cmd.data state
-            new_state
-        let final_state = List.foldBack migrate cmds updated_state
-        (final_state, "Migrated!", 200)
+        let (new_state, cmds) = get_migratable_commands should_migrate state
+        let migrate cmd new_state =
+            let result = send_func cmd.path cmd.meth cmd.data new_state
+            result.state
+        let final_state = List.foldBack migrate cmds new_state
+        resource_response final_state "Migrated!" 200
 
     | _ ->
-        (initial_state, "Bad method used: migrate requires PUT!", 400)
+        resource_response state "Bad method used: migrate requires PUT!" 400
 
 // Handles requests related to logs
 let handle_log (workflow: string) (event: string) (meth: string) (data: string)
-        (repo: Repository) : ResourceResponse<Repository> =
+        (state: PastryState<Repository>) : ResourceResponse<Repository> =
     match (meth, event) with
     | "PUT", "" ->
-        (repo, "No event given for log request!", 400)
+        resource_response state "No event given for log request!" 400
     | "PUT", ev ->
         let args = split data ','
         if not ((List.length args) = 2) then
-            (repo, "The arguments must be on the form <datetime>,<username>", 400)
+            let msg = "The arguments must be on the form <datetime>,<username>"
+            resource_response state msg 400
         else
             let datetime = args.[0]
             let user = args.[1]
-            let res = add_log (workflow, event) datetime user repo
+            let res = add_log (workflow, event) datetime user state
             match res with
-            | Result.Ok(updated_repo) ->
-                (updated_repo, "Log added!", 200)
+            | Result.Ok(new_state) ->
+                resource_response new_state "Log added!" 200
             | error ->
                 let msg = sprintf "Got an unsupported error type %A" error
-                (repo, msg, 400)
+                resource_response state msg 400
     | "GET", "" ->
-        match get_logs workflow repo with
+        match get_logs workflow state with
         | Some(logs) ->
             let resp = String.concat "\n" logs
-            (repo, resp, 200)
+            resource_response state resp 200
         | None ->
-            (repo, "Workflow not found", 404)
+            resource_response state "Workflow not found" 404
     | "GET", ev ->
-        (repo, "ERROR: Event given for log get request", 400)
+        resource_response state "ERROR: Event given for log get request" 400
     | _ ->
-        (repo, "ERROR: Bad log request method: " + meth, 400)
+        let msg = sprintf "ERROR: Bad log request method: %s" meth
+        resource_response state msg 400
 
 // The actual resource handling function
 let handle_resource (path: string) (meth: string) (message: string)
-        (send_func: SendFunc<Repository>) (repo: Repository)
+        (send_func: SendFunc<Repository>) (state: PastryState<Repository>)
         : ResourceResponse<Repository> =
     match split path '/' with
     | [] ->
-        repo, "Nothing asked, nothing found.",400
+        resource_response state "Nothing asked, nothing found." 400
 
     | "user"::args ->
         match meth, args with
         | "POST", user::[] ->
-            handle_user <| UserAction.Create(user) <| repo
+            handle_user <| UserAction.Create(user) <| state
 
         | "DELETE", user::[] ->
-            handle_user <| UserAction.Delete(user) <| repo
+            handle_user <| UserAction.Delete(user) <| state
 
         | "PUT", user::"roles"::workflow::[] ->
             let roles = Set.ofList (split message ',')
-            handle_user <| UserAction.AddRoles(user, workflow, roles) <| repo
+            handle_user <| UserAction.AddRoles(user, workflow, roles) <| state
 
         | "GET", user::"roles"::workflow::[] ->
-            handle_user <| UserAction.GetRoles(user, workflow) <| repo
+            handle_user <| UserAction.GetRoles(user, workflow) <| state
 
         | "DELETE", user::"roles"::workflow::[] ->
             let roles = Set.ofList (split message ',')
-            handle_user <| UserAction.RemoveRoles(user, workflow, roles) <| repo
+            handle_user <| UserAction.RemoveRoles(user, workflow, roles) <| state
 
         | _ ->
-            (repo, "Unsupported user operation", 400)
+            resource_response state "Unsupported user operation" 400
 
     | "workflow"::workflow::[] ->
-        handle_workflow workflow meth message repo
+        handle_workflow workflow meth message send_func state
 
     | "workflow"::workflow::event::[] -> // Create event
-        handle_event workflow event "" meth message repo send_func
+        handle_event (workflow, event) "" meth message send_func state
 
     | "workflow"::workflow::event::attribute::[] ->
-        handle_event workflow event attribute meth message repo send_func
+        handle_event (workflow, event) attribute meth message send_func state
 
     | "workflow"::workflow::event::relation::connection::[] ->
-        handle_relation workflow event relation connection meth message repo send_func
+        handle_relation (workflow, event) relation connection meth message send_func state
 
     | "migrate"::[] ->
-        handle_full_migration meth message send_func repo
+        handle_full_migration meth message send_func state
 
     | "migrate"::from_guid::to_guid::[] ->
-        handle_partial_migration meth from_guid to_guid send_func repo
+        handle_partial_migration meth from_guid to_guid send_func state
 
     | "log"::workflow::event::[] ->
-        handle_log workflow event meth message repo
+        handle_log workflow event meth message state
 
     | "log"::workflow::[] ->
-        handle_log workflow "" meth message repo
+        handle_log workflow "" meth message state
 
     | _ ->
         printfn "Invalid path gotten: %s" path
-        repo, "Invalid path", 400
+        resource_response state "Invalid path" 400
