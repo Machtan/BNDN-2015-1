@@ -527,9 +527,11 @@ let handle_resource (path: string) (meth: string) (message: string)
         handle_partial_migration meth from_guid to_guid send_func state
 
     | "log"::workflow::event::[] ->
+        printfn "REST: Logging event..."
         handle_log workflow event meth message state
 
     | "log"::workflow::[] ->
+        printfn "REST: Getting logs..."
         handle_log workflow "" meth message state
 
     | _ ->

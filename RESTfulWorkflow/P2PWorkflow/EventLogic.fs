@@ -260,10 +260,10 @@ let unlock_all (events: Set<EventName>) (send_func: SendFunc<Repository>)
     let unlock event (succesful, new_state) =
         let result = send (Unlock(event)) send_func new_state
         if succesful && (check_if_positive result.status) then
-            (true, new_state)
+            (true, result.state)
         else
             printfn "UNLOCK ERROR: Could not unlock '%A' | %d | '%s'" event result.status result.message
-            (false, new_state)
+            (false, result.state)
 
     Set.foldBack unlock events (true, state)
 
@@ -271,7 +271,11 @@ let unlock_all (events: Set<EventName>) (send_func: SendFunc<Repository>)
 let execute (eventName : EventName) (userName : UserName)
         (sendFunc : SendFunc<Repository>) (state : PastryState<Repository>)
         : Result =
+    printfn ""
+    printfn "%s" (String.replicate 50 "=")
     printfn "EXECUTE: Executing %A!" eventName
+    printfn "%s" (String.replicate 50 "=")
+    printfn ""
     let result = check_if_executable eventName userName sendFunc state
     match result.result with
     | ReadResult.Ok(executable_state) ->
@@ -303,6 +307,11 @@ let execute (eventName : EventName) (userName : UserName)
                     if succesfully_unlocked then
                         // Log this shit!
                         let end_result = send (Log(eventName, DateTime.Now, userName)) sendFunc unlocked_state
+                        printfn ""
+                        printfn "%s" (String.replicate 50 "=")
+                        printfn "EXECUTE: Execution finished!"
+                        printfn "%s" (String.replicate 50 "=")
+                        printfn ""
                         let inner (event : Event) : UpdateEventResult =
                             EventOk({event with executed = true; pending = false})
                         update_inner_event eventName inner end_result.state
