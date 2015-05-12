@@ -24,6 +24,16 @@ type MessageType =
 | GetState      // Hey, I need something you have (such as a new leaf)
 | DeadNode      // Someone has died. Find the one who can fix it
 
+// A result type for HTTP requests
+type HttpResult =
+| Ok of string
+| Error of string * int
+
+// An argument type for HTTP requests
+type HttpAction =
+| Download of string * string
+| Upload of string * string * string
+
 // The state record of a Pastry node
 type Node = {
     guid: GUID;

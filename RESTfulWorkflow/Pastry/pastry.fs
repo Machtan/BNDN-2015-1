@@ -93,10 +93,10 @@ let send_backup_state (node: Node) (state_msg: string) =
             | None ->
                 failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
         match send_message address Backup state_msg neighbor with
-        | None ->
-            printfn "BACKUP: No reply for backup: Handle node failure?"
-        | Some(resp, status) ->
-            printfn "BACKUP: Backed up succesfully!"
+        | HttpResult.Ok(msg) ->
+            printfn "BACKUP: Backed up succesfully! (%s)" msg
+        | HttpResult.Error(msg, status) ->
+            printfn "BACKUP: No reply for backup: Handle node failure? (%d %s)" status msg
 
 // Handles a pastry join request (this node getting the things needed to join)
 let handle_join (node: Node) (message: string): Node =
@@ -149,10 +149,10 @@ let handle_join (node: Node) (message: string): Node =
         }
     let notify guid address =
         match send_message address Update (serialize updated_node) guid with
-        | Some(_) ->
+        | HttpResult.Ok(_) ->
             ()
-        | None ->
-            printfn "JOIN: Failed to notify %A at '%s' of update..." guid address
+        | HttpResult.Error(msg, status) ->
+            printfn "JOIN: Failed to notify %A at '%s' of update: %d %s" guid address status msg
     Map.iter notify updated_node.leaves
     //Map.iter notify updated_node.neighbors // We don't remove these properly, so...
     List.iter (fun map_level -> Map.iter notify map_level) updated_node.routing_table
@@ -325,9 +325,10 @@ let rec route_leaf (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: G
     else
         let address = Map.find closest env.state.node.leaves
         match send_message address typ msg key with
-        | Some((resp, status)) ->
-            resource_response env.state resp status
-        | None -> // HERE BE POSSIBLE DEADLOCKS (yay)
+        | HttpResult.Ok(message) ->
+            resource_response env.state message 200
+        | HttpResult.Error(msg, status) -> // HERE BE POSSIBLE DEADLOCKS (yay)
+            printfn "ROUTE LEAF: Could not send a message to %s: %d %s" (serialize_guid key) status msg
             // Fix the leaf
             let new_state = handle_dead_leaf env closest route_func
             let new_env = { env with state = new_state; }
@@ -427,7 +428,7 @@ let create_send_func<'a> (env: PastryEnv<'a>): SendFunc<'a> =
             route new_env (Resource(resource_path, meth)) data guid
 
         | Error(resp, status, reason) ->
-            error <| sprintf "Could not send '%s' message from repo to '%s'" meth resource_path
+            printfn "SEND FUNC: Could not get a destination for '%s': %d %s" resource_path status reason
             resource_response state resp status
     send_func
 
@@ -462,11 +463,11 @@ let ping_neighbor<'a> (env: PastryEnv<'a>) : PastryState<'a> =
             | None ->
                 failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
         match send_message address Ping "" neighbor with
-        | None ->
-            printfn "PING: Neighbor is dead, do something!"
-            handle_dead_leaf env neighbor route
-        | Some(resp, status) ->
+        | HttpResult.Ok(_) ->
             env.state
+        | HttpResult.Error(message, status) ->
+            printfn "PING: Neighbor is dead, do something! (%d %s)" status message
+            handle_dead_leaf env neighbor route
 
 // Makes the given pastry node start listening...
 let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
@@ -563,9 +564,9 @@ let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (pe
         start_listening<'a> env
     | Some(peer) ->
         match send_message peer Join address guid with
-        | None ->
-            error <| sprintf "Could not establish a connection with peer at '%s'" peer
-        | Some(_) ->
+        | HttpResult.Error(msg, status) ->
+            error <| sprintf "Could not establish a connection with peer at '%s' (%d %s)" peer status msg
+        | HttpResult.Ok(_) ->
             start_listening<'a> env
 
 // Starts a server with a fixed guid in string from

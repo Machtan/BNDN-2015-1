@@ -6,6 +6,7 @@ open System.IO
 open System.Net
 open System.Numerics
 open Newtonsoft.Json
+open System.Text
 
 open PastryTypes
 
@@ -310,38 +311,68 @@ let remove_leaf (node: Node) (leaf: GUID) : Node =
     else
         { node with leaves = leaves; }
 
+
+// Sends a HTTP message using the given HTTP action argument type
+let send_http (action: HttpAction) : HttpResult =
+    try
+        use w = new System.Net.WebClient ()
+        match action with
+        | Download(url, data) ->
+            let full_url = sprintf "%s?data=%s" url data
+            HttpResult.Ok(w.DownloadString(full_url))
+        | Upload(url, meth, data) ->
+            HttpResult.Ok(w.UploadString(url, meth, data))
+    with
+    | :? WebException as error ->
+        //printfn "Got exception: %A" error
+        //printfn "Error status: %A" error.Status
+        match error.Status with
+        | WebExceptionStatus.Success | WebExceptionStatus.ProtocolError ->
+            let response: HttpWebResponse = error.Response :?> HttpWebResponse
+            let status: int = int response.StatusCode
+            let message =
+                let encoding = Encoding.UTF8
+                use is = new System.IO.StreamReader(response.GetResponseStream(), encoding)
+                is.ReadToEnd()
+            //printfn "Web error: %d | %s" status message
+            HttpResult.Error(message, status)
+        | _ ->
+            HttpResult.Error(sprintf "Connection error: %A" error, 400)
+    | error ->
+        HttpResult.Error(sprintf "Connection error: %A" error, 400)
+
 // Sends a pastry message to a node at an address, that a type of message must
 // be forwarded towards a pastry node, carrying some data
 let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
-        (destination: GUID) : (string * int) option =
-    try
-        match typ with
-        | Resource(path, meth) ->
-            let url = sprintf "http://%s/resource/%s" address path
-            printfn "SEND: %s %s => %s" meth url message
-            use w = new System.Net.WebClient ()
+        (destination: GUID) : HttpResult =
+    match typ with
+    | Resource(path, meth) ->
+        let url = sprintf "http://%s/resource/%s" address path
+        printfn "SEND: %s %s => %s" meth url message
+        use w = new System.Net.WebClient ()
+        let action =
             match meth with
             | "GET" ->
-                Some((w.DownloadString(url + "?data="+message)), 200)// TODO make safer
+                Download(url, message)
+            | "PUT" ->
+                Upload(url, meth, message)
             | _ ->
-                Some((w.UploadString(url, meth, message)), 200)
-        | _ ->
-            let cmd =
-                match typ with
-                | Join          -> "join"
-                | JoinState     -> "joinstate"
-                | Update        -> "update"
-                | Backup        -> "backup"
-                | Ping          -> "ping"
-                | GetState      -> "getstate"
-                | DeadNode      -> "deadnode"
-                | Resource(_)   -> failwith "Got past a match on 'Resource'"
-            let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
-            printfn "SEND: %s => %s" url message
-            use w = new System.Net.WebClient ()
-            Some((w.UploadString(url, "POST", message), 200))
-    with
-        | ex -> None
+                failwith "ASSERTION FAILED: Got unknown HTTP method in pastry send_message!"
+        send_http action
+    | _ ->
+        let cmd =
+            match typ with
+            | Join          -> "join"
+            | JoinState     -> "joinstate"
+            | Update        -> "update"
+            | Backup        -> "backup"
+            | Ping          -> "ping"
+            | GetState      -> "getstate"
+            | DeadNode      -> "deadnode"
+            | Resource(_)   -> failwith "Got past a match on 'Resource'"
+        let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
+        printfn "SEND: %s => %s" url message
+        send_http <| Upload(url, "PUT", message)
 
 // Returns the destination of a given split resource url (after the /resources/ part)
 let get_destination (resource_url: string list): Destination =
