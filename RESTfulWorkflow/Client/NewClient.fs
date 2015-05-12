@@ -7,7 +7,7 @@ open System.Text
 type HttpResult =
 | Ok of string
 | Error of string * int
-| ConnectionError
+| ConnectionError of exn
 
 // The state for the program
 type State = {
@@ -38,7 +38,7 @@ let split (str: string) (c: char) =
     List.ofArray (str.Split([|c|]))
 
 // Prints the actions of the given list
-let print_actions<'a> (actions: (string * string * 'a) list) (state: State) =
+let print_actions (actions: (string * string * 'a) list) (state: State) =
     printfn "> ==== Actions ==== | %s | %s " state.user state.workflow
     let print_action (identifier, desc, _) =
         printfn "- %s: %s" identifier desc
@@ -69,7 +69,10 @@ let send_http (action: HttpAction) : HttpResult =
             //printfn "Web error: %d | %s" status message
             Error(message, status)
         | _ ->
-            ConnectionError
+            printfn "WebException error status: %A" error.Status
+            Error(sprintf "Unhandled web exception: %A" error, 400)
+    | error ->
+        ConnectionError(error)
 
 // Uploads a string
 let upload (url: string) (meth: string) (data: string) : HttpResult =
@@ -86,10 +89,10 @@ let get_workflow_events (state: State) : (string list) option =
     | Ok(resp) ->
         Some(split resp ',')
     | Error(resp, status) ->
-        printfn "! Error: %d %s" status resp
+        printfn "! Get Workflow Events: Error - %d %s" status resp
         None
-    | ConnectionError ->
-        printfn "! Connection Error!"
+    | ConnectionError(error) ->
+        printfn "! Get Workflow Events: Connection Error - %A!" error
         None
 
 // Prints the logs of a given workflow if it exists
@@ -104,9 +107,9 @@ let print_logs (state: State): State =
             let logs = split resp '\n'
             List.iter (fun entry -> printfn "- %s" entry) logs
     | Error(resp, status) ->
-        printfn "! Could not get logs: %d %s" status resp
-    | ConnectionError ->
-        printfn "! Connection Error!"
+        printfn "! Print logs: Could not get logs - %d %s" status resp
+    | ConnectionError(error) ->
+        printfn "! Print Logs: Connection Error - %A!" error
     state
 
 // Changes the active workflow
@@ -125,15 +128,15 @@ let change_user (state: State): State =
 
 // Debugs the state of the server this client is connected to
 let debug_state (state: State): State =
-    let url = sprintf "%s/pastry/debug/%s" state.peer DUMMY_GUID
+    let url = sprintf "%s/resource/debug/%s" state.peer state.workflow
     match download url "" with
     | Ok(message) ->
         printfn "> ==== DEBUG ===="
         printfn "%s" message
     | Error(resp, status) ->
-        printfn "! Error: %d %s" status resp
-    | ConnectionError ->
-        printfn "! Connection Error!"
+        printfn "! Debug state: Error - %d %s" status resp
+    | ConnectionError(error) ->
+        printfn "! Debug state: Connection Error - %A!" error
     state
 
 // Gets the state of the active workflow
@@ -155,7 +158,7 @@ let get_workflow (state: State): Workflow option =
                         false::attrs
                 | Error(message, status) ->
                     false::attrs
-                | ConnectionError ->
+                | ConnectionError(error) ->
                     attrs
             let status = List.foldBack get_state attributes []
             if (List.length status) = 4 then
@@ -168,10 +171,21 @@ let get_workflow (state: State): Workflow option =
                 }
                 event_state::workflow
             else
-                printfn "! Could not load event '%s'" event
+                printfn "! Get Workflow: Could not load event '%s'" event
                 workflow
         let workflow = List.foldBack folder events []
-        Some(workflow)
+
+        let sorter event =
+            let n = event.name
+            match event.pending, event.executable, event.included with
+            | true, true, true -> (1, n)
+            | _, true, _ -> (2, n)
+            | _, _, true -> (3, n)
+            | true, _, _ -> (4, n)
+            | _ -> (5, n)
+
+        let sorted = List.sortBy sorter workflow
+        Some(sorted)
 
 // Shows the status of the workflow
 let show_status_from_workflow (workflow: Workflow) =
@@ -219,10 +233,10 @@ let rec execute_event (state: State) (updated: bool): State =
                     printfn "> Executed!"
                     true
                 | Error(resp, status) ->
-                    printfn "! Error: %d | %s" status resp
+                    printfn "! Execute: Error - %d | %s" status resp
                     false
-                | ConnectionError ->
-                    printfn "! Connection error!"
+                | ConnectionError(error) ->
+                    printfn "! Execute: Connection error - %A!" error
                     false
             num - 1, (string num, event.name, func)::actions
         let executable_events: Event list = List.filter filter workflow
