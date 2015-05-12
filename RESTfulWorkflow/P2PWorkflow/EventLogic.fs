@@ -9,53 +9,69 @@ type UpdateMapResult =
 | MapOk of Map<string, bool*Event>
 | MapErr of Result
 
-let update_inner_map (workflow : WorkflowName) (func : Map<string, bool*Event> -> UpdateMapResult) (repository : Repository) : Result =
+// SendResult constructor
+let send_result<'a> (result: 'a) (state: PastryState<Repository>) =
+    { result = result; state = state; }
+
+let update_inner_map (workflow : WorkflowName)
+        (func : Map<string, bool*Event> -> UpdateMapResult)
+        (state : PastryState<Repository>) : Result =
     let inner_map =
-        match Map.tryFind workflow repository.events with
-        | Some(map) -> map
-        | None -> Map.empty
+        match Map.tryFind workflow state.data.events with
+        | Some(map) ->
+            map
+        | None ->
+            Map.empty
     match func inner_map with
-    | MapOk(newMap) -> Ok({repository with events = Map.add workflow newMap repository.events})
-    | MapErr(error) -> error
+    | MapOk(newMap) ->
+        let new_repo = { state.data with events = Map.add workflow newMap state.data.events}
+        Ok({state with data = new_repo;})
+    | MapErr(error) ->
+        error
 
 type UpdateEventResult =
 | EventOk of Event
 | EventErr of Result
 
-let update_inner_event (eventName : EventName) (func : Event -> UpdateEventResult) (repository : Repository) : Result =
+let update_inner_event (eventName: EventName) (func: Event -> UpdateEventResult)
+        (state: PastryState<Repository>): Result =
     let workflow, name = eventName
     let inner (eventMap : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name eventMap with
-            | Some(lockEvent)  ->
-                let lock, event = lockEvent
-                match func event with
-                | EventOk(newEvent) -> MapOk(Map.add name (lock, newEvent) eventMap)
-                | EventErr(errer)   -> MapErr(errer)
-            | None      -> MapErr(MissingEvent)
+        | Some(lockEvent)  ->
+            let lock, event = lockEvent
+            match func event with
+            | EventOk(newEvent) ->
+                MapOk(Map.add name (lock, newEvent) eventMap)
+            | EventErr(errer) ->
+                MapErr(errer)
+        | None ->
+            MapErr(MissingEvent(state))
 
-    update_inner_map workflow inner repository
+    update_inner_map workflow inner state
 
 // Attempts to get an event in the repository
-let get_event (eventName : EventName) (repository : Repository) : ReadResult<Event * bool> =
+let get_event (eventName: EventName) (state: PastryState<Repository>)
+        : ReadResult<Event * bool> =
     let workflow, name = eventName
-    match repository.events.TryFind workflow with
+    match state.data.events.TryFind workflow with
         | Some(x) ->
             match x.TryFind name with
             | Some((locked, event)) ->
-                ReadResult.Ok((event, locked))
+                ReadResult.Ok(event, locked)
             | None ->
                 NotFound(NotFoundError.Event)
         | None ->
             NotFound(NotFoundError.Workflow)
 
 /// Creates and returns a new event from a name and a start state
-let create_event (eventName : EventName) (state : EventState)
-        (roles: string list) (locked : bool) (repository : Repository) : Result =
+let create_event (eventName : EventName) (event_state : EventState)
+        (roles: string list) (locked : bool) (state : PastryState<Repository>) : Result =
     let event: Event = {
         name        = eventName;
-        executed    = state.executed;
-        included    = state.included;
-        pending     = state.pending;
+        executed    = event_state.executed;
+        included    = event_state.included;
+        pending     = event_state.pending;
         toRelations = Set.empty;
         fromRelations = Set.empty;
         roles       = Set.ofList roles;
@@ -64,12 +80,15 @@ let create_event (eventName : EventName) (state : EventState)
 
     // TODO Maybe check whether the workflow exists somewhere
     // before adding events
+    let modify x =
+        MapOk(Map.add name (locked, event) x)
 
-    update_inner_map workflow (fun x -> MapOk(Map.add name (locked, event) x)) repository
+    update_inner_map workflow modify state
 
 /// Check if given event have one of given roles
-let check_roles (eventName : EventName) (user_roles : Roles) (repository : Repository) : ReadResult<bool> =
-    match get_event eventName repository with
+let check_roles (eventName : EventName) (user_roles : Roles)
+        (state: PastryState<Repository>) : ReadResult<bool> =
+    match get_event eventName state with
     | ReadResult.Ok(event, _) ->
         if not (Set.isEmpty event.roles) then
             let has_common_role = not (Set.isEmpty (Set.intersect event.roles user_roles))
@@ -81,51 +100,56 @@ let check_roles (eventName : EventName) (user_roles : Roles) (repository : Repos
 
 /// Checks if given event is executeble
 let check_if_executable (eventName : EventName) (user: string)
-        (sendFunc : SendFunc<Repository>) (repository : Repository)
-        : ReadResult<ExecutableState> =
+        (sendFunc : SendFunc<Repository>) (state: PastryState<Repository>)
+        : SendResult<ReadResult<ExecutableState>> =
     let workflow_name, _ = eventName
     //printfn "EXECHECK: Checking if %A is executable (wf: %s)" eventName workflow_name
     // Check if the user can actually execute this
-    let (_, answer, status) = send (GetUserRoles(user, workflow_name)) sendFunc repository
-    let user_found = check_if_positive status
+    let result = send (GetUserRoles(user, workflow_name)) sendFunc state
+    let user_found = check_if_positive result.status
     let roles =
         if user_found then
-            Set.ofArray (answer.Split ',')
+            Set.ofArray (result.message.Split ',')
         else
-            printfn "EXECHECK: User '%s' not found: '%s'" user answer
+            printfn "EXECHECK: User '%s' not found: '%s'" user result.message
             Set.empty
-    let event_result = get_event eventName repository
+    let event_result = get_event eventName result.state
     match event_result with
     | ReadResult.Ok((event, false)) ->
 
-        let onlyConditions x =
-            let typ, _ = x
+        let is_condition (typ, _) =
             typ = Condition
 
-        let checkConditions x =
-            let typ, fromEventName = x
-            let fromWorkflow, fromName = fromEventName
-            let (_, resp, status) = send (GetIfCondition(eventName)) sendFunc repository
-            check_if_positive_bool resp status
+        let check_condition (typ, from_event) (succesful, new_state) =
+            let fromWorkflow, fromName = from_event
+            let cond_resp = send (GetIfCondition(eventName)) sendFunc new_state
+            let condition_fulfilled = check_if_positive_bool cond_resp.message cond_resp.status
+            if succesful && condition_fulfilled then
+                (true, cond_resp.state)
+            else
+                (false, cond_resp.state)
 
         if event.included then
-            let fromRelations = Set.filter onlyConditions event.fromRelations
-            if Set.forall checkConditions fromRelations then
-                ReadResult.Ok(ExecutableState.Executable)
+            let fromRelations = Set.filter is_condition event.fromRelations
+            let conditions_fulfilled, new_state =
+                Set.foldBack check_condition fromRelations (true, result.state)
+            if conditions_fulfilled then
+                send_result <| ReadResult.Ok(ExecutableState.Executable) <| new_state
             else
-                ReadResult.Ok(ExecutableState.NotExecutable)
+                send_result <| ReadResult.Ok(ExecutableState.NotExecutable) <| new_state
         else
-            ReadResult.Ok(ExecutableState.NotExecutable)
+            send_result <| ReadResult.Ok(ExecutableState.NotExecutable) <| result.state
 
     | ReadResult.Ok((_, true)) ->
-        ReadResult.Ok(ExecutableState.Locked)
+        send_result <| ReadResult.Ok(ExecutableState.Locked) <| result.state
 
     | NotFound(err) ->
-        NotFound(err)
+        send_result <| NotFound(err) <| result.state
 
 /// Checks if given event is lock'et
-let check_if_locked (eventName : EventName) (repository : Repository) : ReadResult<bool> =
-    match get_event eventName repository with
+let check_if_locked (eventName : EventName) (state : PastryState<Repository>)
+        : ReadResult<bool> =
+    match get_event eventName state with
     | ReadResult.Ok((_, locked)) ->
         ReadResult.Ok(locked)
     | NotFound(error) ->
@@ -133,115 +157,125 @@ let check_if_locked (eventName : EventName) (repository : Repository) : ReadResu
 
 /// Checks if given event is executed / excluded
 // (whether the condition is fulfilled)
-let check_condition (eventName : EventName) (repository : Repository) : ReadResult<bool> =
-    match get_event eventName repository with
+let check_condition (eventName : EventName) (state : PastryState<Repository>)
+        : ReadResult<bool> =
+    match get_event eventName state with
     | ReadResult.Ok((event, _)) ->
         ReadResult.Ok(event.executed || (not event.included))
     | NotFound(error) ->
         NotFound(error)
 
 // Prints the lock state of the given repository
-let print_lock_state (repo: Repository) =
+let print_lock_state (state: PastryState<Repository>) =
     let check_folder workflow map statelist =
         let inner_folder event (locked, _) statelist =
             if locked then (workflow, event)::statelist
             else statelist
         Map.foldBack inner_folder map statelist
-    let event_state = Map.foldBack check_folder repo.events []
+    let event_state = Map.foldBack check_folder state.data.events []
     printfn "LOCK STATE: %A" event_state
 
 // Try to lock them all
 let lock_all (events_to_lock: Set<EventName>) (sendFunc: SendFunc<Repository>)
-        (repo: Repository) : bool * Repository =
+        (state: PastryState<Repository>) : bool * PastryState<Repository> =
     let inner event (can_continue, locked_events, locked_state) =
         if can_continue then
             printfn "Lock before send:"
             print_lock_state locked_state
-            let (new_state, resp, status) = send (Lock(event)) sendFunc locked_state
+            let result = send (Lock(event)) sendFunc locked_state
             printfn "Lock after send:"
-            print_lock_state new_state
-            if check_if_positive status
+            print_lock_state result.state
+            if check_if_positive result.status
             then
-                (true, Set.add event locked_events, new_state)
+                (true, Set.add event locked_events, result.state)
             else
-                printfn "LOCK ERROR: Could not lock '%A' | %d | '%s'!" event status resp
+                printfn "LOCK ERROR: Could not lock '%A' | %d | '%s'!" event result.status result.message
                 (false, locked_events, locked_state)
         else
             (can_continue, locked_events, locked_state)
 
     // TODO: Send this status further
     let (succesfully_locked, unlockSet, updated_state) =
-        Set.foldBack inner events_to_lock (true, Set.empty, repo)
+        Set.foldBack inner events_to_lock (true, Set.empty, state)
     printfn "LOCK ALL RESULT: %A -> %A" succesfully_locked unlockSet
     print_lock_state updated_state
     if succesfully_locked then
         true, updated_state
     else
-        let lock_succesful event =
-            let (state, resp, status) = send (Unlock(event)) sendFunc repo
-            check_if_positive status
-        if Set.forall lock_succesful unlockSet then
-            false, repo // Give the old back
+        let unlock event (succesful, unlocked_state) =
+            let result = send (Unlock(event)) sendFunc unlocked_state
+            if succesful && (check_if_positive result.status) then
+                true, result.state
+            else
+                false, result.state
+        let (unlock_succesful, unlocked_state) =
+            Set.foldBack unlock unlockSet (true, updated_state)
+        if unlock_succesful then
+            false, unlocked_state
         else
             printfn "LOCK ERROR: Could not remove all locks after failed execution"
-            false, repo
+            false, unlocked_state
 
 // Updates the state of the given event. Used for a folding loop in execute
 let update_all (relations: Set<Relation>) (send_func: SendFunc<Repository>)
-        (state: Repository) : bool * Repository=
-    let update (reltype, event) (can_continue, updated_repo) : bool * Repository =
+        (state: PastryState<Repository>) : bool * PastryState<Repository> =
+
+    let update (reltype, event) (can_continue, new_state)
+            : bool * PastryState<Repository> =
         printfn "EXECUTE: Updating %A to %A (continue: %A)..." reltype event can_continue
         if can_continue then
             match reltype with
             | Condition -> // We check backwards, so nothing here
-                (can_continue, updated_repo)
+                (can_continue, new_state)
             | Exclusion ->
-                let (new_repo, resp, status) = send (SetIncluded(event, false)) send_func updated_repo
-                if check_if_positive status
-                then (true, new_repo)
+                let result = send (SetIncluded(event, false)) send_func new_state
+                if check_if_positive result.status
+                then (true, result.state)
                 else
-                    printfn "EXECUTE ERROR: Could not exclude '%A' | %d | '%s'!" event status resp
-                    (false, updated_repo)
+                    printfn "EXECUTE ERROR: Could not exclude '%A' | %d | '%s'!" event result.status result.message
+                    (false, result.state)
             | Response  ->
-                let (new_repo, resp, status) = send (SetPending(event, true)) send_func updated_repo
-                if check_if_positive status
-                then (true, new_repo)
+                let result = send (SetPending(event, true)) send_func new_state
+                if check_if_positive result.status
+                then (true, result.state)
                 else
-                    printfn "EXECUTE ERROR: Could not notify '%A' | %d | '%s'!" event status resp
-                    (false, updated_repo)
+                    printfn "EXECUTE ERROR: Could not notify '%A' | %d | '%s'!" event result.status result.message
+                    (false, result.state)
             | Inclusion ->
-                let (new_repo, resp, status) = send (SetIncluded(event, true)) send_func updated_repo
-                if check_if_positive status
-                then (true, new_repo)
+                let result = send (SetIncluded(event, true)) send_func new_state
+                if check_if_positive result.status
+                then (true, result.state)
                 else
-                    printfn "EXECUTE ERROR: Could not include '%A' | %d | '%s'!" event status resp
-                    (false, updated_repo)
+                    printfn "EXECUTE ERROR: Could not include '%A' | %d | '%s'!" event result.status result.message
+                    (false, result.state)
         else
-            (can_continue, updated_repo)
+            (can_continue, new_state)
 
     Set.foldBack update relations (true, state)
 
 // Attempts to unlock all the given events
 let unlock_all (events: Set<EventName>) (send_func: SendFunc<Repository>)
-        (state: Repository) : bool * Repository=
+        (state: PastryState<Repository>) : bool * PastryState<Repository> =
     // Try to unlock as much as possible, even if it fails
-    let unlock event (succesful, unlocked_repo) =
-        let (new_repo, resp, status) = send (Unlock(event)) send_func unlocked_repo
-        if succesful && (check_if_positive status) then
-            (true, new_repo)
+    let unlock event (succesful, new_state) =
+        let result = send (Unlock(event)) send_func new_state
+        if succesful && (check_if_positive result.status) then
+            (true, new_state)
         else
-            printfn "UNLOCK ERROR: Could not unlock '%A' | %d | '%s'" event status resp
-            (false, new_repo)
+            printfn "UNLOCK ERROR: Could not unlock '%A' | %d | '%s'" event result.status result.message
+            (false, new_state)
 
     Set.foldBack unlock events (true, state)
 
 /// Executes and returns the given event if the given user has the required role
 let execute (eventName : EventName) (userName : UserName)
-        (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
+        (sendFunc : SendFunc<Repository>) (state : PastryState<Repository>)
+        : Result =
     printfn "EXECUTE: Executing %A!" eventName
-    match check_if_executable eventName userName sendFunc repository with
+    let result = check_if_executable eventName userName sendFunc state
+    match result.result with
     | ReadResult.Ok(executable_state) ->
-        let event_result = get_event eventName repository
+        let event_result = get_event eventName result.state
         match event_result, executable_state with
         | ReadResult.Ok(event, _), ExecutableState.Executable ->
             // Find out which events need to be locked before executing this one
@@ -258,87 +292,100 @@ let execute (eventName : EventName) (userName : UserName)
             let all_events_to_lock = Set.fold setSplit Set.empty necessary_relations
             // NOTE: Remove this event from the lists :p
             let events_to_lock = Set.remove eventName all_events_to_lock
-            let (succesfully_locked, locked_state) = lock_all events_to_lock sendFunc repository
+            let (succesfully_locked, locked_state) =
+                lock_all events_to_lock sendFunc result.state
             if succesfully_locked then
-                let (succesfully_updated, updated_repo) =
+                let (succesfully_updated, updated_state) =
                     update_all event.toRelations sendFunc locked_state
                 if succesfully_updated then
-                    let (succesfully_unlocked, unlocked_repo) =
-                        unlock_all events_to_lock sendFunc updated_repo
+                    let (succesfully_unlocked, unlocked_state) =
+                        unlock_all events_to_lock sendFunc updated_state
                     if succesfully_unlocked then
                         // Log this shit!
-                        let (logged_repo, resp, status) =
-                            send (Log(eventName, DateTime.Now, userName)) sendFunc unlocked_repo
+                        let end_result = send (Log(eventName, DateTime.Now, userName)) sendFunc unlocked_state
                         let inner (event : Event) : UpdateEventResult =
                             EventOk({event with executed = true; pending = false})
-                        update_inner_event eventName inner logged_repo
-                    else Error("ERROR: It's not possible to unlock all events!!!")
-                else Error("ERROR: It's not possible to change all the states!!!")
-            else LockConflict
+                        update_inner_event eventName inner end_result.state
+                    else
+                        Error("ERROR: It's not possible to unlock all events!!!", unlocked_state)
+                else
+                    Error("ERROR: It's not possible to change all the states!!!", updated_state)
+            else
+                LockConflict(locked_state)
 
         | ReadResult.NotFound(error), _ ->
             match error with
             | NotFoundError.Workflow ->
-                Result.MissingWorkflow
+                Result.MissingWorkflow(result.state)
             | NotFoundError.Event ->
-                Result.MissingEvent
+                Result.MissingEvent(result.state)
 
         | _, ExecutableState.NotExecutable ->
-            Result.NotExecutable
+            Result.NotExecutable(result.state)
 
         | _, ExecutableState.Unauthorized ->
-            Result.Unauthorized
+            Result.Unauthorized(result.state)
 
         | _, ExecutableState.Locked ->
-            Result.LockConflict
+            Result.LockConflict(result.state)
 
     | NotFound(error) ->
         match error with
         | NotFoundError.Workflow ->
-            Result.MissingWorkflow
+            Result.MissingWorkflow(result.state)
         | NotFoundError.Event ->
-            Result.MissingEvent
+            Result.MissingEvent(result.state)
 
 /// Adds given roles to given event and returns the result
-let add_event_roles (eventName : EventName) (roles : Roles) (repository : Repository) : Result =
+let add_event_roles (eventName : EventName) (roles : Roles)
+        (state : PastryState<Repository>) : Result =
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with roles = Set.fold (fun x y -> x.Add y) event.roles roles})
-    update_inner_event eventName inner repository
+    update_inner_event eventName inner state
 
 /// Adds given relationships (going from first given event) to given event and returns the result
-let add_relation_to (fromEvent : EventName) (relations : RelationType) (toEvent : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    let (updated_state, msg, status) = send (AddFromRelation(fromEvent, relations, toEvent)) sendFunc repository
-    if check_if_positive (status)
+let add_relation_to (fromEvent : EventName) (relations : RelationType)
+        (toEvent : EventName) (sendFunc : SendFunc<Repository>)
+        (state : PastryState<Repository>) : Result =
+    let cmd = AddFromRelation(fromEvent, relations, toEvent)
+    let result = send cmd sendFunc state
+    if check_if_positive result.status
     then
         let inner (event : Event) : UpdateEventResult =
             EventOk({event with toRelations = Set.add (relations, toEvent) event.toRelations})
-        update_inner_event fromEvent inner updated_state
-    else LockConflict
+        update_inner_event fromEvent inner result.state
+    else
+        LockConflict(result.state)
 
 /// Adds given relationships (going to given event) to given event and returns the result
-let add_relation_from (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (repository : Repository) : Result =
+let add_relation_from (fromEvent : EventName) (relations : RelationType)
+        (toEventName : EventName) (state : PastryState<Repository>) : Result =
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with fromRelations = Set.add (relations, fromEvent) event.fromRelations})
-    update_inner_event toEventName inner repository
+    update_inner_event toEventName inner state
 
 /// Chance state
-let set_included (eventName : EventName) (newState : bool) (repository : Repository) : Result =
+let set_included (eventName : EventName) (newState : bool)
+        (state : PastryState<Repository>) : Result =
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with included = newState})
-    update_inner_event eventName inner repository
+    update_inner_event eventName inner state
 
-let set_pending (eventName : EventName) (newState : bool) (repository : Repository) : Result =
+let set_pending (eventName : EventName) (newState : bool)
+        (state : PastryState<Repository>) : Result =
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with pending = newState})
-    update_inner_event eventName inner repository
+    update_inner_event eventName inner state
 
-let set_executed (eventName : EventName) (newState : bool) (repository : Repository) : Result =
+let set_executed (eventName : EventName) (newState : bool)
+        (state : PastryState<Repository>) : Result =
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with executed = newState})
-    update_inner_event eventName inner repository
+    update_inner_event eventName inner state
 
 /// lock given event
-let lock_event (eventName : EventName) (repository : Repository) : Result =
+let lock_event (eventName: EventName) (state: PastryState<Repository>)
+        : Result =
     let workflow, name = eventName
     let inner (x : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name x with
@@ -346,14 +393,15 @@ let lock_event (eventName : EventName) (repository : Repository) : Result =
             if not locked then
                 MapOk(Map.add name (true, event) x)
             else
-                MapErr(LockConflict)
+                MapErr(LockConflict(state))
         | None ->
-            MapErr(MissingEvent)
+            MapErr(MissingEvent(state))
 
-    update_inner_map workflow inner repository
+    update_inner_map workflow inner state
 
 /// unlock given event
-let unlock_event (eventName : EventName) (repository : Repository) : Result =
+let unlock_event (eventName : EventName) (state : PastryState<Repository>)
+        : Result =
     let workflow, name = eventName
     let inner (x : Map<string, bool*Event>) : UpdateMapResult =
         match Map.tryFind name x with
@@ -361,53 +409,73 @@ let unlock_event (eventName : EventName) (repository : Repository) : Result =
             if locked then
                 MapOk(Map.add name (false, event) x)
             else
-                MapErr(LockConflict)
+                MapErr(LockConflict(state))
         | None ->
-            MapErr(MissingEvent)
+            MapErr(MissingEvent(state))
 
-    update_inner_map workflow inner repository
+    update_inner_map workflow inner state
 
 /// Removes given relation form given event and returns the result
-let remove_relation_to (fromEvent : EventName) (relations : RelationType) (toEventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
-    let (state, resp, status) = send (RemoveFromRelation(toEventName, relations, fromEvent)) sendFunc repository
-    if check_if_positive status then
+let remove_relation_to (fromEvent : EventName) (relations : RelationType)
+        (toEvent : EventName) (sendFunc : SendFunc<Repository>)
+        (state: PastryState<Repository>) : Result =
+    let cmd = RemoveFromRelation(fromEvent, relations, toEvent)
+    let result = send cmd sendFunc state
+    if check_if_positive result.status then
         let inner (event : Event) : UpdateEventResult =
-            if Set.contains (relations, toEventName) event.toRelations
-            then EventOk({event with toRelations = Set.remove (relations, toEventName) event.toRelations})
-            else EventErr(MissingRelation)
-        update_inner_event fromEvent inner state
-    else LockConflict
+            if Set.contains (relations, toEvent) event.toRelations then
+                let to_relations = Set.remove (relations, toEvent) event.toRelations
+                EventOk({event with toRelations = to_relations; })
+            else
+                EventErr(MissingRelation(result.state))
+        update_inner_event fromEvent inner result.state
+    else
+        LockConflict(result.state)
 
 /// Removes given relation form given event and returns the result
-let remove_relation_from (fromEvent : EventName) (relations : RelationType) (toEvent : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
+let remove_relation_from (fromEvent : EventName) (relations : RelationType)
+        (toEvent : EventName) (sendFunc : SendFunc<Repository>)
+        (state : PastryState<Repository>) : Result =
     let inner (event : Event) : UpdateEventResult =
         if Set.contains (relations, fromEvent) event.toRelations
-        then EventOk({event with toRelations = Set.remove (relations, fromEvent) event.toRelations})
-        else EventErr(MissingRelation)
-    update_inner_event toEvent inner repository
+        then
+            let from_relations = Set.remove (relations, fromEvent) event.fromRelations
+            EventOk({event with fromRelations = from_relations; })
+        else
+            EventErr(MissingRelation(state))
+    update_inner_event toEvent inner state
 
 /// Attempts to delete the given event and returns whether it was succesful
-let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>) (repository : Repository) : Result =
+let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>)
+        (state : PastryState<Repository>) : Result =
     //Dummy
     let workflow, eName = eventName
-    match get_event eventName repository with
+    match get_event eventName state with
     | ReadResult.Ok((event, false)) ->
         printfn "Removing event '%s' from workflow '%s'..." eName workflow
 
-        let remove_to_relation (reltype, target) (succesful, removed_state) =
-            let (new_state, resp, status) = send (RemoveToRelation(eventName, reltype, target)) sendFunc removed_state
-            if succesful && (check_if_positive status) then (true, new_state)
-            else (false, new_state)
+        // Continues despite failing: TODO: change
+        let remove_to_relation (reltype, target) (succesful, new_state) =
+            let cmd = RemoveToRelation(eventName, reltype, target)
+            let result = send cmd sendFunc new_state
+            if succesful && (check_if_positive result.status) then
+                (true, result.state)
+            else
+                (false, result.state)
 
         let (succesfully_removed_to_relations, removed_to_state) =
-            Set.foldBack remove_to_relation event.toRelations (true, repository)
+            Set.foldBack remove_to_relation event.toRelations (true, state)
 
         if succesfully_removed_to_relations then
 
-            let remove_from_relation (reltype, target) (succesful, removed_state) =
-                let (new_state, resp, status) = send (RemoveFromRelation(eventName, reltype, target)) sendFunc removed_state
-                if succesful && (check_if_positive status) then (true, new_state)
-                else (false, new_state)
+            // Continues despite failing: TODO: change
+            let remove_from_relation (reltype, target) (succesful, new_state) =
+                let cmd = RemoveFromRelation(eventName, reltype, target)
+                let result = send cmd sendFunc new_state
+                if succesful && (check_if_positive result.status) then
+                    (true, result.state)
+                else
+                    (false, result.state)
 
             let (succesfully_removed_from_relations, removed_state) =
                 Set.foldBack remove_from_relation event.fromRelations (true, removed_to_state)
@@ -417,27 +485,30 @@ let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>) (repo
 
                 let inner (x : Map<string, bool*Event>) : UpdateMapResult =
                     match Map.tryFind name x with
-                    | Some(_)   -> MapOk(Map.remove name x)
-                    | None      -> MapErr(MissingEvent)
+                    | Some(_) ->
+                        MapOk(Map.remove name x)
+                    | None ->
+                        MapErr(MissingEvent(removed_state))
 
                 update_inner_map workflow inner removed_state
-            else LockConflict
-        else LockConflict
+            else
+                LockConflict(removed_state)
+        else
+            LockConflict(removed_to_state)
 
     | ReadResult.Ok((event, true)) ->
-        LockConflict
+        LockConflict(state)
 
     | NotFound(error) ->
         match error with
         | NotFoundError.Workflow ->
-            Result.MissingWorkflow
+            Result.MissingWorkflow(state)
         | NotFoundError.Event ->
-            Result.MissingEvent
-
+            Result.MissingEvent(state)
 
 /// Removes given roles form given event and returns the result
-let remove_event_roles (eventName : EventName) (roles : Roles) (repository : Repository) : Result =
+let remove_event_roles (eventName : EventName) (roles : Roles)
+        (state : PastryState<Repository>) : Result =
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with roles = Set.fold (fun x y -> x.Remove y) event.roles roles})
-    update_inner_event eventName inner repository
-
+    update_inner_event eventName inner state

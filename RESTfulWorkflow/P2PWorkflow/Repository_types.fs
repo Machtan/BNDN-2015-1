@@ -62,11 +62,6 @@ type ExecutableState =
 | NotExecutable
 | Locked
 
-// A type for reads of things on an event
-type ReadResult<'a> =
-| Ok of 'a
-| NotFound of NotFoundError
-
 type Repository = {
     // workflow name: event name: (locked, state)
     events: Map<string, Map<string, bool*Event>>;
@@ -74,6 +69,17 @@ type Repository = {
     // workflow name: workflow
     workflows: Map<string, Workflow>;
 }
+
+// The result of functions modifying the pastry state by sending
+type SendResult<'a> = {
+    result: 'a;
+    state: PastryState<Repository>;
+}
+
+// A type for reads of things on an event
+type ReadResult<'a> =
+| Ok of 'a
+| NotFound of NotFoundError
 
 // The result when creating a new user
 type CreateUserResult =
@@ -111,14 +117,14 @@ type ResultEvent =
     | LockConflict
 
 type Result =
-    | Ok of Repository
-    | Unauthorized
-    | NotExecutable
-    | MissingRelation
-    | MissingEvent
-    | MissingWorkflow
-    | LockConflict
-    | Error of string
+    | Ok of PastryState<Repository>
+    | Unauthorized of PastryState<Repository>
+    | NotExecutable of PastryState<Repository>
+    | MissingRelation of PastryState<Repository>
+    | MissingEvent of PastryState<Repository>
+    | MissingWorkflow of PastryState<Repository>
+    | LockConflict of PastryState<Repository>
+    | Error of string * PastryState<Repository>
 
 type Message =
     | GetIfCondition            of EventName

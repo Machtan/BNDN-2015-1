@@ -512,14 +512,14 @@ let handle_resource (path: string) (meth: string) (message: string)
         | "DELETE", user::[] ->
             handle_user <| UserAction.Delete(user) <| repo
 
-        | "PUT", user::"roles"::workflow::event::[] ->
+        | "PUT", user::"roles"::workflow::[] ->
             let roles = Set.ofList (split message ',')
             handle_user <| UserAction.AddRoles(user, workflow, roles) <| repo
 
         | "GET", user::"roles"::workflow::[] ->
             handle_user <| UserAction.GetRoles(user, workflow) <| repo
 
-        | "DELETE", user::"roles"::workflow::event::[] ->
+        | "DELETE", user::"roles"::workflow::[] ->
             let roles = Set.ofList (split message ',')
             handle_user <| UserAction.RemoveRoles(user, workflow, roles) <| repo
 
