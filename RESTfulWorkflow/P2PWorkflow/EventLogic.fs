@@ -116,19 +116,21 @@ let check_if_executable (eventName : EventName) (user: string)
     let event_result = get_event eventName result.state
     match event_result with
     | ReadResult.Ok((event, false)) ->
+        let user_has_permission = not (Set.isEmpty <| Set.intersect roles event.roles)
 
-        let is_condition (typ, _) =
-            typ = Condition
+        match event.included, user_has_permission with
+        | true, true ->
+            let is_condition (typ, _) =
+                typ = Condition
 
-        let check_condition (typ, from_event) (succesful, new_state) =
-            let cond_resp = send (GetIfCondition(from_event)) sendFunc new_state
-            let condition_fulfilled = check_if_positive_bool cond_resp.message cond_resp.status
-            if succesful && condition_fulfilled then
-                (true, cond_resp.state)
-            else
-                (false, cond_resp.state)
+            let check_condition (typ, from_event) (succesful, new_state) =
+                let cond_resp = send (GetIfCondition(from_event)) sendFunc new_state
+                let condition_fulfilled = check_if_positive_bool cond_resp.message cond_resp.status
+                if succesful && condition_fulfilled then
+                    (true, cond_resp.state)
+                else
+                    (false, cond_resp.state)
 
-        if event.included then
             let fromRelations = Set.filter is_condition event.fromRelations
             let conditions_fulfilled, new_state =
                 Set.foldBack check_condition fromRelations (true, result.state)
@@ -136,7 +138,9 @@ let check_if_executable (eventName : EventName) (user: string)
                 send_result <| ReadResult.Ok(ExecutableState.Executable) <| new_state
             else
                 send_result <| ReadResult.Ok(ExecutableState.NotExecutable) <| new_state
-        else
+        | true, false ->
+            send_result <| ReadResult.Ok(ExecutableState.Unauthorized) <| result.state
+        | false, _ ->
             send_result <| ReadResult.Ok(ExecutableState.NotExecutable) <| result.state
 
     | ReadResult.Ok((_, true)) ->
@@ -357,13 +361,13 @@ let add_relation_to (fromEvent : EventName) (relations : RelationType)
         (state : PastryState<Repository>) : Result =
     let cmd = AddFromRelation(fromEvent, relations, toEvent)
     let result = send cmd sendFunc state
-    if check_if_positive result.status
-    then
+    if check_if_positive result.status then
         let inner (event : Event) : UpdateEventResult =
             EventOk({event with toRelations = Set.add (relations, toEvent) event.toRelations})
         update_inner_event fromEvent inner result.state
     else
-        LockConflict(result.state)
+        printfn ">>>>>>>>>>>>> Add Relation To: Error - %d | %s" result.status result.message
+        MissingEvent(result.state)
 
 /// Adds given relationships (going to given event) to given event and returns the result
 let add_relation_from (fromEvent : EventName) (relations : RelationType)
@@ -438,7 +442,8 @@ let remove_relation_to (fromEvent : EventName) (relations : RelationType)
                 EventErr(MissingRelation(result.state))
         update_inner_event fromEvent inner result.state
     else
-        LockConflict(result.state)
+        printfn ">>>>>>>>>>>>> Remove Relation To: Error - %d | %s" result.status result.message
+        MissingEvent(result.state)
 
 /// Removes given relation form given event and returns the result
 let remove_relation_from (fromEvent : EventName) (relations : RelationType)
