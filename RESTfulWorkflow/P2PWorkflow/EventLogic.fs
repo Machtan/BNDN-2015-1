@@ -121,8 +121,7 @@ let check_if_executable (eventName : EventName) (user: string)
             typ = Condition
 
         let check_condition (typ, from_event) (succesful, new_state) =
-            let fromWorkflow, fromName = from_event
-            let cond_resp = send (GetIfCondition(eventName)) sendFunc new_state
+            let cond_resp = send (GetIfCondition(from_event)) sendFunc new_state
             let condition_fulfilled = check_if_positive_bool cond_resp.message cond_resp.status
             if succesful && condition_fulfilled then
                 (true, cond_resp.state)

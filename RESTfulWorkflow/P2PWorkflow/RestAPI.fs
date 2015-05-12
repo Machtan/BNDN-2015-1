@@ -310,6 +310,16 @@ let handle_event (event: EventName) (attribute: string)
     | "DELETE", "" ->
         deleteEvent event send_func state
 
+    | "GET", "getif" ->
+        match check_condition event state with
+        | ReadResult.Ok(fulfilled) ->
+            printfn ">>>>>>>> GETIF %A -> %A" event fulfilled
+            let msg = if fulfilled then "true" else "false"
+            resource_response state msg 200
+        | ReadResult.NotFound(error) ->
+            let msg = sprintf "Getif target not found: %A" error
+            resource_response state msg 404
+
     | "GET", "executed" ->
         getExecuted event state
     | "PUT", "executed" ->
@@ -478,6 +488,34 @@ let handle_log (workflow: string) (event: string) (meth: string) (data: string)
         let msg = sprintf "ERROR: Bad log request method: %s" meth
         resource_response state msg 400
 
+// Debugs the current workflow and sends its state as a message
+let debug_state (workflow: string) (state: PastryState<Repository>)
+        : ResourceResponse<Repository> =
+    let event_folder workflow event_map lines =
+        let inner_folder name (locked, state) lines =
+            let i = if state.included then "i" else " "
+            let p = if state.pending then "!" else " "
+            let e = if state.executed then "x" else " "
+            let l = if locked then "{locked} " else ""
+            let r = String.concat ", " state.roles
+            let line = sprintf "- %s%s%s %s %s(%s)" i p e name l r
+            let rel_folder (typ, event) rel_list =
+                let wf, ename = event
+                let entry = sprintf "%A(%s/%s)" typ wf ename
+                entry::rel_list
+            let from_rel_list = Set.foldBack rel_folder state.fromRelations []
+            let from_rels = String.concat " | " <| "- From: "::from_rel_list
+            let to_rel_list = Set.foldBack rel_folder state.toRelations []
+            let to_rels = String.concat " | " <| "- To: "::to_rel_list
+            line::lines
+        let new_lines = Map.foldBack inner_folder event_map lines
+        let workflow_line = sprintf "Workflow: '%s'" workflow
+        workflow_line::new_lines
+    let event_lines = Map.foldBack event_folder state.data.events []
+
+    let result = String.concat "\n" event_lines
+    resource_response state result 200
+
 // The actual resource handling function
 let handle_resource (path: string) (meth: string) (message: string)
         (send_func: SendFunc<Repository>) (state: PastryState<Repository>)
@@ -533,6 +571,9 @@ let handle_resource (path: string) (meth: string) (message: string)
     | "log"::workflow::[] ->
         printfn "REST: Getting logs..."
         handle_log workflow "" meth message state
+
+    | "debug"::workflow::[] ->
+        debug_state workflow state
 
     | _ ->
         printfn "Invalid path gotten: %s" path
