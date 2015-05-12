@@ -20,7 +20,7 @@ Repository_types = ["Pastry"]
 Migrate = ["Repository_types"]
 EventLogic = ["Repository_types", "Pastry", "Send"]
 UserLogic = ["Repository_types", "EventLogic", "Pastry"]
-WorkflowLogic = ["Repository_types", "Pastry"]
+WorkflowLogic = ["Repository_types", "Pastry", "EventLogic"]
 RestAPI = [
     "Repository_types", "EventLogic", "WorkflowLogic",
     "UserLogic", "Pastry", "Migrate", "Newtonsoft.Json"

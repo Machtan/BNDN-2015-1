@@ -83,12 +83,12 @@ type ReadResult<'a> =
 
 // The result when creating a new user
 type CreateUserResult =
-| Ok of Repository
+| Ok of PastryState<Repository>
 | UserAlreadyExists
 
 // The result when adding roles to a user
 type AddRolesResult =
-| Ok of Repository
+| Ok of PastryState<Repository>
 | UserNotFound
 
 // Samey
@@ -96,7 +96,7 @@ type DeleteUserResult = AddRolesResult
 
 // The result when removing roles from a user
 type RemoveRolesResult =
-| Ok of Repository
+| Ok of PastryState<Repository>
 | UserNotFound
 | NoRolesForWorkflow
 
