@@ -86,7 +86,7 @@ let send (message : Message) (sendFunc : SendFunc<Repository>)
     | Log(eventName, dateTime, userName) ->
         let workflow, event = eventName
         let data = sprintf "%s,%s" (string dateTime) userName
-        let url = sprintf "resource/log/%s/%s" workflow event
+        let url = sprintf "log/%s/%s" workflow event
         sendFunc url "PUT" data state
 
 /// tests if a ResourceResponse is positive
