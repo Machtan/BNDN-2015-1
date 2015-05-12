@@ -9,6 +9,10 @@ open Newtonsoft.Json
 
 open PastryTypes
 
+// ============= CONFIG ================
+let DIGIT_POWER = 4 // 2^b-1 per row in the routing table
+let MAX_LEAVES = 16 // or 32
+
 // Just a little formatting
 let error str =
     printfn "PASTRY ERROR: %s" str
@@ -16,6 +20,19 @@ let error str =
 // Splits a string at the given char and returns a list of substrings
 let split (str: string) (c: char) =
     List.ofArray (str.Split([|c|]))
+
+// Replies to a http request
+let reply (response: HttpListenerResponse) (answer: string) (status: int) (reason: string) =
+    printfn "REPLY: --> %d | %s | %s" status reason answer
+    // Set HTTP statuscode and reason (e.g., 200 OK)
+    response.StatusCode <- status
+    response.StatusDescription <- reason
+    // Encode and write body.
+    let buffer = System.Text.Encoding.UTF8.GetBytes(answer : string)
+    response.ContentLength64 <- int64 buffer.Length;
+    response.OutputStream.Write(buffer,0,buffer.Length);
+    response.OutputStream.Close();
+
 
 // Checks whether the given GUID is within the valid min leaf range
 let valid_min_leaf (node: Node) (check: GUID) =
@@ -185,6 +202,147 @@ let get_public_ip () =
 
     direction.Substring(first, last - first)
 
+// Finds the leaf that is to the left of this node
+let find_left_leaf (node: Node) : GUID =
+    let closer_than k acc =
+        distance k node.guid < distance acc node.guid
+    let folder k _ acc =
+        if (valid_min_leaf node k) && (closer_than k acc) then k
+        else acc
+    Map.foldBack folder node.leaves node.minleaf
+
+// Finds the leaf that is to the right of this node
+let find_right_leaf (node: Node) : GUID =
+    let closer_than k acc =
+        distance k node.guid < distance acc node.guid
+    let folder k _ acc =
+        if (valid_max_leaf node k) && (closer_than k acc) then k
+        else acc
+    Map.foldBack folder node.leaves node.maxleaf
+
+// Finds the GUID of the neighbor that this node watches over
+let find_watched_neighbor (node: Node) = find_right_leaf node
+
+// Adds the given node as a neighbor if it makes sense (I'm not using this ATM)
+let try_add_neighbor (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
+    if node.neighbors.Count < MAX_LEAVES then
+        { node with neighbors = Map.add guid address node.neighbors; }
+    else
+        node
+
+// Finds the biggest leaf blah blah
+let find_max_leaf (node: Node) (leaves: Map<GUID, NetworkLocation>): GUID =
+    let folder k _ acc =
+        if valid_max_leaf node k then
+            if distance k node.guid > distance acc node.guid then k
+            else acc
+        else acc
+    let maxleaf = Map.foldBack folder leaves node.guid
+    if maxleaf = node.guid then node.minleaf
+    else maxleaf
+
+// Finds the smallest leaf blah blah
+let find_min_leaf (node: Node) (leaves: Map<GUID, NetworkLocation>): GUID =
+    let folder k _ acc =
+        if valid_min_leaf node k then
+            if distance k node.guid > distance acc node.guid then k
+            else acc
+        else acc
+    let minleaf = Map.foldBack folder leaves node.guid
+    if minleaf = node.guid then node.maxleaf
+    else minleaf
+
+// Tries to add the given guid/address pair to the node as a leaf
+let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
+    // Check whether there is an empty spot in the leaf set for this leaf
+    if node.leaves.Count < MAX_LEAVES then // Room for more
+        let leaves = Map.add guid address node.leaves
+        // Find the index of the sorted list of keys that is bigger than the
+        // node's guid
+        let sorted_leaves = Map.toList leaves |> List.map (fun (k,_) -> k) |> List.sort
+        let folder k acc =
+            if k < node.guid then acc + 1
+            else acc
+        let bigger_index = List.foldBack folder sorted_leaves 0
+        let min_leaf_index = (bigger_index + (leaves.Count / 2)) % leaves.Count
+        let max_leaf_index =
+            if min_leaf_index = 0 then leaves.Count - 1
+            else min_leaf_index - 1
+        let minleaf = List.nth sorted_leaves min_leaf_index
+        let maxleaf = List.nth sorted_leaves max_leaf_index
+        { node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
+    else
+        if (valid_max_leaf node guid) && (not (guid = node.maxleaf)) then
+            let leaves = Map.add guid address (Map.remove node.maxleaf node.leaves)
+            let maxleaf = find_max_leaf node leaves
+            { node with leaves = leaves; maxleaf = maxleaf; }
+        else if (valid_min_leaf node guid) && (not (guid = node.minleaf)) then
+            let leaves = Map.add guid address (Map.remove node.minleaf node.leaves)
+            let minleaf = find_min_leaf node leaves
+            { node with leaves = leaves; minleaf = minleaf; }
+        else
+            node
+
+// Safely removes a leaf and updates the min/max parts
+let remove_leaf (node: Node) (leaf: GUID) : Node =
+    let leaves = Map.remove leaf node.leaves
+    if leaves.Count < MAX_LEAVES then // Room for more
+        // Find the index of the sorted list of keys that is bigger than the
+        // node's guid
+        let sorted_leaves = Map.toList leaves |> List.map (fun (k,_) -> k) |> List.sort
+        let folder k acc =
+            if k < node.guid then acc + 1
+            else acc
+        let bigger_index = List.foldBack folder sorted_leaves 0
+        let min_leaf_index = (bigger_index + (leaves.Count / 2)) % leaves.Count
+        let max_leaf_index =
+            if min_leaf_index = 0 then leaves.Count - 1
+            else min_leaf_index - 1
+        let minleaf = List.nth sorted_leaves min_leaf_index
+        let maxleaf = List.nth sorted_leaves max_leaf_index
+        { node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
+    else if leaf = node.maxleaf then
+        let maxleaf = find_max_leaf node leaves
+        { node with leaves = leaves; maxleaf = maxleaf; }
+    else if leaf = node.maxleaf then
+        let minleaf = find_min_leaf node leaves
+        { node with leaves = leaves; minleaf = minleaf; }
+    else
+        { node with leaves = leaves; }
+
+// Sends a pastry message to a node at an address, that a type of message must
+// be forwarded towards a pastry node, carrying some data
+let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
+        (destination: GUID) : (string * int) option =
+    try
+        match typ with
+        | Resource(path, meth) ->
+            let url = sprintf "http://%s/resource/%s" address path
+            printfn "SEND: %s %s => %s" meth url message
+            use w = new System.Net.WebClient ()
+            match meth with
+            | "GET" ->
+                Some((w.DownloadString(url + "?data="+message)), 200)// TODO make safer
+            | _ ->
+                Some((w.UploadString(url, meth, message)), 200)
+        | _ ->
+            let cmd =
+                match typ with
+                | Join          -> "join"
+                | JoinState     -> "joinstate"
+                | Update        -> "update"
+                | Backup        -> "backup"
+                | Ping          -> "ping"
+                | GetState      -> "getstate"
+                | DeadNode      -> "deadnode"
+                | Resource(_)   -> failwith "Got past a match on 'Resource'"
+            let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
+            printfn "SEND: %s => %s" url message
+            use w = new System.Net.WebClient ()
+            Some((w.UploadString(url, "POST", message), 200))
+    with
+        | ex -> None
+
 // Returns the destination of a given split resource url (after the /resources/ part)
 let get_destination (resource_url: string list): Destination =
     let path = String.concat "/" resource_url
@@ -196,7 +354,8 @@ let get_destination (resource_url: string list): Destination =
     | "user"::name::"roles"::workflow::[] ->
         Ok(hash <| sprintf "user/%s" name)
     | "user"::name::unwanted_stuff ->
-        let error_message = sprintf "UTILS: Bad user path '%s'. It should be on the form 'user/<username>'" path
+        let a = "It should be on the form 'user/<username>'"
+        let error_message = sprintf "UTILS: Bad user path '%s'. %s" path a
         Error(error_message, 400, "Invalid URL")
     | "workflow"::workflow::[] -> // create/get workflow
         Ok(hash (sprintf "workflow/%s" workflow))
@@ -207,7 +366,8 @@ let get_destination (resource_url: string list): Destination =
     | "workflow"::workflow::event::relation::dst::[] ->
         Ok(hash (sprintf "workflow/%s/%s" workflow event))
     | "workflow"::badly_formed_path ->
-        let error_message = sprintf "UTILS: Bad workflow path '%s'.\nIt should be on the form '/resource/workflow/<name>[/<eventname>/<attribute>]'" path
+        let a = "It should be on the form '/resource/workflow/<name>[/<eventname>/<attribute>]'"
+        let error_message = sprintf "UTILS: Bad workflow path '%s'.\n%s" path a
         Error(error_message, 400, "Invalid URL")
     | "log"::workflow::[] ->
         Ok(hash (sprintf "workflow/%s" workflow))

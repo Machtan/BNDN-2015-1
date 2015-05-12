@@ -10,85 +10,67 @@ open PastryUtils
 
 // ====================== CONFIG ======================
 
-let DIGIT_POWER = 4 // 2^b-1 per row in the routing table
-let MAX_LEAVES = 16 // or 32
 let SEPARATOR = " SEPARATOR " // This is silly, but safe...
 
 // ====================================================
 
 // ============ TYPES FOR THE INTERFACE ===============
 
+// The main state of pastry
+type PastryState<'a> = {
+    node: Node; // Because nodes change during routing
+    data: 'a;   // The data of the application
+}
+
 // Updated state, response, status code
-type ResourceResponse<'a> = 'a * string * int
+type ResourceResponse<'a> = {
+    state: PastryState<'a>
+    message: string;    // Http response string
+    status: int;        // Http status code
+}
 
 // A function for the resource request func to send requests through
 // partial_resource_url, method, data, state -> response
-type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
+type SendFunc<'a> = string -> string -> string -> PastryState<'a> -> ResourceResponse<'a>
 
 // A function to handle resource requests
 // url, method, data, send_func, state -> response
-type ResourceRequestFunc<'a> = string -> string -> string -> SendFunc<'a> -> 'a -> ResourceResponse<'a>
+type ResourceRequestFunc<'a> = string -> string -> string -> SendFunc<'a> -> PastryState<'a> -> ResourceResponse<'a>
 
 // A function to serialize the state passed through pastry
 type SerializeFunc<'a> = 'a -> string
 
-// A record containing the types needed to inter properly with the pastry
-// network
-type PastryInterface<'a> = {
+// A record used for passing the current application environment easily through
+// functions
+type PastryEnv<'a> = {
     send: SendFunc<'a>;
     handle: ResourceRequestFunc<'a>;
     serialize: SerializeFunc<'a>;
-    state: 'a;
+    state: PastryState<'a>;
 }
 
 // I need this for circular references /o/
-type RouteFunc<'a> = Node -> MessageType -> string -> GUID -> PastryInterface<'a> -> Node * 'a * (string * int)
+type RouteFunc<'a> = PastryEnv<'a> -> MessageType -> string -> GUID -> ResourceResponse<'a>
 
 // ====================================================
 
-// Sends a pastry message to a node at an address, that a type of message must
-// be forwarded towards a pastry node, carrying some data
-let send_message (address: NetworkLocation) (typ: MessageType) (message: string) (destination: GUID) : (string * int) option =
-    try
-        match typ with
-        | Resource(path, meth) ->
-            let url = sprintf "http://%s/resource/%s" address path
-            printfn "SEND: %s %s => %s" meth url message
-            use w = new System.Net.WebClient ()
-            match meth with
-            | "GET" ->
-                Some((w.DownloadString(url + "?data="+message)), 200)// TODO make safer
-            | _ ->
-                Some((w.UploadString(url, meth, message)), 200)
-        | _ ->
-            let cmd =
-                match typ with
-                | Join          -> "join"
-                | JoinState     -> "joinstate"
-                | Update        -> "update"
-                | Backup        -> "backup"
-                | Ping          -> "ping"
-                | GetState      -> "getstate"
-                | DeadNode      -> "deadnode"
-                | Resource(_)   -> failwith "Got past a match on 'Resource'"
-            let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
-            printfn "SEND: %s => %s" url message
-            use w = new System.Net.WebClient ()
-            Some((w.UploadString(url, "POST", message), 200))
-    with
-        | ex -> None
+// A simple constructor for resource responses
+let resource_response<'a> (state: PastryState<'a>) (message: string)
+        (status: int) : ResourceResponse<'a> =
+    { state = state; message = message; status = status; }
 
-// Replies to a http request
-let reply (response: HttpListenerResponse) (answer: string) (status: int) (reason: string) =
-    printfn "REPLY: --> %d | %s | %s" status reason answer
-    // Set HTTP statuscode and reason (e.g., 200 OK)
-    response.StatusCode <- status
-    response.StatusDescription <- reason
-    // Encode and write body.
-    let buffer = System.Text.Encoding.UTF8.GetBytes(answer : string)
-    response.ContentLength64 <- int64 buffer.Length;
-    response.OutputStream.Write(buffer,0,buffer.Length);
-    response.OutputStream.Close();
+// Returns whether the given resource belongs on this pastry node or another
+let belongs_on_other (self_guid: string) (resource: string) (other_guid: string) : bool =
+    let (self, other) =
+        match deserialize_guid self_guid, deserialize_guid other_guid with
+        | Some(a), Some(b) -> a, b
+        | _ -> failwith (sprintf "Invalid guids given: %s %s" self_guid other_guid)
+    let path = split resource '/'
+    match get_destination path with
+    | Ok(guid) ->
+        distance self guid < distance other guid
+    | Error(_) ->
+        failwith "Bad resource url: '%s'" resource
 
 // Sends a backup state to the nodes that are watching this node
 let send_backup_state (node: Node) (state_msg: string) =
@@ -115,93 +97,6 @@ let send_backup_state (node: Node) (state_msg: string) =
             printfn "BACKUP: No reply for backup: Handle node failure?"
         | Some(resp, status) ->
             printfn "BACKUP: Backed up succesfully!"
-
-// Adds the given node as a neighbor if it makes sense (I'm not using this ATM)
-let try_add_neighbor (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
-    if node.neighbors.Count < MAX_LEAVES then
-        { node with neighbors = Map.add guid address node.neighbors; }
-    else
-        node
-
-// Finds the biggest leaf blah blah
-let find_max_leaf (node: Node) (leaves: Map<GUID, NetworkLocation>): GUID =
-    let folder k _ acc =
-        if valid_max_leaf node k then
-            if distance k node.guid > distance acc node.guid then k
-            else acc
-        else acc
-    let maxleaf = Map.foldBack folder leaves node.guid
-    if maxleaf = node.guid then node.minleaf
-    else maxleaf
-
-// Finds the smallest leaf blah blah
-let find_min_leaf (node: Node) (leaves: Map<GUID, NetworkLocation>): GUID =
-    let folder k _ acc =
-        if valid_min_leaf node k then
-            if distance k node.guid > distance acc node.guid then k
-            else acc
-        else acc
-    let minleaf = Map.foldBack folder leaves node.guid
-    if minleaf = node.guid then node.maxleaf
-    else minleaf
-
-// Tries to add the given guid/address pair to the node as a leaf
-let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
-    // Check whether there is an empty spot in the leaf set for this leaf
-    if node.leaves.Count < MAX_LEAVES then // Room for more
-        let leaves = Map.add guid address node.leaves
-        // Find the index of the sorted list of keys that is bigger than the
-        // node's guid
-        let sorted_leaves = Map.toList leaves |> List.map (fun (k,_) -> k) |> List.sort
-        let folder k acc =
-            if k < node.guid then acc + 1
-            else acc
-        let bigger_index = List.foldBack folder sorted_leaves 0
-        let min_leaf_index = (bigger_index + (leaves.Count / 2)) % leaves.Count
-        let max_leaf_index =
-            if min_leaf_index = 0 then leaves.Count - 1
-            else min_leaf_index - 1
-        let minleaf = List.nth sorted_leaves min_leaf_index
-        let maxleaf = List.nth sorted_leaves max_leaf_index
-        { node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
-    else
-        if (valid_max_leaf node guid) && (not (guid = node.maxleaf)) then
-            let leaves = Map.add guid address (Map.remove node.maxleaf node.leaves)
-            let maxleaf = find_max_leaf node leaves
-            { node with leaves = leaves; maxleaf = maxleaf; }
-        else if (valid_min_leaf node guid) && (not (guid = node.minleaf)) then
-            let leaves = Map.add guid address (Map.remove node.minleaf node.leaves)
-            let minleaf = find_min_leaf node leaves
-            { node with leaves = leaves; minleaf = minleaf; }
-        else
-            node
-
-// Safely removes a leaf and updates the min/max parts
-let remove_leaf (node: Node) (leaf: GUID) : Node =
-    let leaves = Map.remove leaf node.leaves
-    if leaves.Count < MAX_LEAVES then // Room for more
-        // Find the index of the sorted list of keys that is bigger than the
-        // node's guid
-        let sorted_leaves = Map.toList leaves |> List.map (fun (k,_) -> k) |> List.sort
-        let folder k acc =
-            if k < node.guid then acc + 1
-            else acc
-        let bigger_index = List.foldBack folder sorted_leaves 0
-        let min_leaf_index = (bigger_index + (leaves.Count / 2)) % leaves.Count
-        let max_leaf_index =
-            if min_leaf_index = 0 then leaves.Count - 1
-            else min_leaf_index - 1
-        let minleaf = List.nth sorted_leaves min_leaf_index
-        let maxleaf = List.nth sorted_leaves max_leaf_index
-        { node with leaves = leaves; minleaf = minleaf; maxleaf = maxleaf; }
-    else if leaf = node.maxleaf then
-        let maxleaf = find_max_leaf node leaves
-        { node with leaves = leaves; maxleaf = maxleaf; }
-    else if leaf = node.maxleaf then
-        let minleaf = find_min_leaf node leaves
-        { node with leaves = leaves; minleaf = minleaf; }
-    else
-        { node with leaves = leaves; }
 
 // Handles a pastry join request (this node getting the things needed to join)
 let handle_join (node: Node) (message: string): Node =
@@ -265,103 +160,88 @@ let handle_join (node: Node) (message: string): Node =
     updated_node
 
 // Handles that the node closest to this on the 'bigger' side has died
-let migrate_dead_leaf<'a> (node: Node) (neighbor: GUID)
-        (inter: PastryInterface<'a>) : 'a =
-    let (state', resp, status) = inter.handle "migrate" "PUT" node.backup inter.send inter.state
-    state'
-
-// Finds the leaf that is to the left of this node
-let find_left_leaf (node: Node) : GUID =
-    let closer_than k acc =
-        distance k node.guid < distance acc node.guid
-    let folder k _ acc =
-        if (valid_min_leaf node k) && (closer_than k acc) then k
-        else acc
-    Map.foldBack folder node.leaves node.minleaf
-
-// Finds the leaf that is to the right of this node
-let find_right_leaf (node: Node) : GUID =
-    let closer_than k acc =
-        distance k node.guid < distance acc node.guid
-    let folder k _ acc =
-        if (valid_max_leaf node k) && (closer_than k acc) then k
-        else acc
-    Map.foldBack folder node.leaves node.maxleaf
-
-// Finds the GUID of the neighbor that this node watches over
-let find_watched_neighbor (node: Node) = find_right_leaf node
+let migrate_dead_leaf<'a> (env: PastryEnv<'a>) (neighbor: GUID): PastryState<'a> =
+    let response = env.handle "migrate" "PUT" env.state.node.backup env.send env.state
+    response.state
 
 // Handles that a node in the leaf set has failed
-let handle_dead_leaf<'a> (node: Node) (leaf: GUID) (route_func: RouteFunc<'a>)
-        (inter: PastryInterface<'a>): Node * 'a =
+let handle_dead_leaf<'a> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFunc<'a>)
+        : PastryState<'a> =
     printfn "DEAD: Removing dead leaf %s from leaf set" (serialize_guid leaf)
-    let leaves = Map.remove leaf node.leaves
+    let leaves = Map.remove leaf env.state.node.leaves
     // Find out what to do with the death
-    let watched = find_watched_neighbor node
+    let watched = find_watched_neighbor env.state.node
     //printfn "%s" <| String.replicate 50 "="
     //printfn "Watched neighbor of %s: %s" (string node.guid) (string watched)
     //printfn "min, max, leaves: %s | %s | %A" (string node.minleaf) (string node.maxleaf) node.leaves
     //printfn "%s" <| String.replicate 50 "="
 
-    let node_with_leaves = { node with leaves = leaves; }
-    let (updated_node, updated_state) =
+    let node_with_leaves = { env.state.node with leaves = leaves; }
+    let new_env =
         // This node is supposed to handle it
+        let new_env = { env with state = { env.state with node = node_with_leaves;}}
         if leaf = watched then // IMPORTANT original node
-            node_with_leaves, migrate_dead_leaf node_with_leaves leaf inter
+            { new_env with state = migrate_dead_leaf new_env leaf; }
         else // Send it elsewhere. Update the node in case other leaves have failed
-            let (node', state', _) = route_func node_with_leaves DeadNode (serialize_guid leaf) leaf inter
-            node', state'
+            let response = route_func new_env DeadNode (serialize_guid leaf) leaf
+            { new_env with state = response.state; }
 
     // Find the node that might have a replacement leaf
     let get_folder predicate =
         let folder k _ acc =
-            if (predicate k) && (distance node.guid k > distance node.guid acc) then k
+            if (predicate k) && (distance new_env.state.node.guid k > distance new_env.state.node.guid acc) then k
             else acc
         folder
 
-    let predicate = if valid_min_leaf node leaf then valid_min_leaf node else valid_max_leaf node
-    let end_leaf = Map.foldBack (get_folder predicate) leaves node.guid
-    if end_leaf = node.guid then
-        if valid_min_leaf node leaf then
+    let predicate = // Checks if it would be a leaf of the old state
+        if valid_min_leaf new_env.state.node leaf then valid_min_leaf new_env.state.node
+        else valid_max_leaf new_env.state.node
+
+    let end_leaf = Map.foldBack (get_folder predicate) new_env.state.node.leaves new_env.state.node.guid
+    if end_leaf = new_env.state.node.guid then
+        if valid_min_leaf env.state.node leaf then
             // No other min leaves, therefore min is max
-            { updated_node with minleaf = node.maxleaf; }, updated_state
+            let new_node: Node = { new_env.state.node with minleaf = new_env.state.node.maxleaf; }
+            { new_env.state with node = new_node; }
         else
             // No other max leaves, therefore max is min
-            { updated_node with maxleaf = node.minleaf; }, updated_state
+            let new_node = { new_env.state.node with maxleaf = new_env.state.node.minleaf; }
+            { new_env.state with node = new_node; }
     else
         // Ask it for its state
-        let (_, _, (resp, status)) = route_func node GetState "" end_leaf inter
-        let state = deserialize resp
+        let response = route_func new_env GetState "" end_leaf
+        let final_env = { new_env with state = response.state; }
+        let state = deserialize response.message
 
         // Get the replacement leaves if any
-        let update_folder guid addr node' =
-            if not (guid = leaf) then try_add_leaf node' guid addr
-            else node'
-        (Map.foldBack update_folder state.leaves updated_node), updated_state
+        let update_folder guid addr new_node =
+            if not (guid = leaf) then try_add_leaf new_node guid addr
+            else new_node
+        let new_node = Map.foldBack update_folder state.leaves final_env.state.node
+        { new_env.state with node = new_node; }
 
 // Updates this node based on a new node that is joining the network
-let update_node<'a> (node: Node) (new_node: Node) (inter: PastryInterface<'a>)
-    : Node * 'a  =
-    let node_with_leaves = try_add_leaf node new_node.guid new_node.address
+let update_node<'a> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
+    let node_with_leaves = try_add_leaf env.state.node new_node.guid new_node.address
     //try_add_neighbor updated_leaves new_node.guid new_node.address
 
     // Find out whether this node is a close leaf (1 smaller or larger)
     let is_left_leaf = (new_node.guid = find_left_leaf node_with_leaves)
     let is_right_leaf = (new_node.guid = find_right_leaf node_with_leaves)
     if is_left_leaf || is_right_leaf then
-        let own_id = serialize_guid node.guid
+        let own_id = serialize_guid env.state.node.guid
         let other_id = serialize_guid new_node.guid
         printfn "MIGRATE: The new node %s is my neighbor!" other_id
         let path = sprintf "migrate/%s/%s" own_id other_id
-        let (state', resp, status) = inter.handle path "PUT" "" inter.send inter.state
-        node_with_leaves, state'
+        let new_env = { env with state = { env.state with node = node_with_leaves;}}
+        let response = new_env.handle path "PUT" "" new_env.send new_env.state
+        response.state
     else
-        node_with_leaves, inter.state
+        { env.state with node = node_with_leaves; }
 
 // Handles a message intended for this node
-let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: GUID)
-        (route_func: RouteFunc<'a>) (inter: PastryInterface<'a>)
-        : Node * 'a * (string * int) =
+let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
+        (key: GUID) (route_func: RouteFunc<'a>) : ResourceResponse<'a> =
     //printfn "HANDLE: | Handling '%A'" typ
     //printfn "HANDLE: | '%s'" message
     match typ with
@@ -371,30 +251,31 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
         let states = message.[firstsep + SEPARATOR.Length..]
         // Failure is unimportant here, no?
         ignore <| send_message address JoinState states key
-        node, inter.state, ("", 200)
+        resource_response env.state "" 200
 
     | JoinState -> // This node receives the states needed to initialize itself
-        let updated_node = handle_join node message
-        updated_node, inter.state, ("Joined", 200)
+        let updated_node = handle_join env.state.node message
+        resource_response { env.state with node = updated_node;} "Joined" 200
 
     | Update -> // The node is notified of a new node joining
-        let (updated_node, updated_state) = update_node node (deserialize message) inter
+        let updated_state = update_node env <| deserialize message
         //printfn "PASTRY: State after update: %A" updated_node
-        updated_node, updated_state, ("Updated", 200)
+        resource_response updated_state "Updated" 200
 
     | Resource(path, meth) -> // Request for a resource here
         //printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
-        let (state', resp, status) = inter.handle path meth message inter.send inter.state
-        node, state', (resp, status)
+        env.handle path meth message env.send env.state
 
     | DeadNode -> // Something has died
         printfn "DEAD: Notified that %s has died" (serialize_guid key)
         let dead =
             match deserialize_guid message with
-            | Some(g) -> g
-            | None -> failwith "Could not deserialize dead node GUID %s" message
+            | Some(guid) ->
+                guid
+            | None ->
+                failwith "Could not deserialize dead node GUID %s" message
 
-        let watched = find_watched_neighbor node
+        let watched = find_watched_neighbor env.state.node
         //printfn "%s" <| String.replicate 50 "="
         //printfn "Watched neighbor of %s: %s" (string node.guid) (string watched)
         //printfn "min, max, leaves: %s | %s | %A" (string node.minleaf) (string node.maxleaf) node.leaves
@@ -402,178 +283,180 @@ let handle_message<'a> (node: Node) (typ: MessageType) (message: string) (key: G
 
         if dead = watched then
             printfn "DEAD: It's the one I'm watching!"
-            match Map.tryFind dead node.leaves with
+            match Map.tryFind dead env.state.node.leaves with
             | Some(_) ->
-                let (node', state') = handle_dead_leaf node dead route_func inter
-                node', state', ("Handled!", 200)
+                let updated_state = handle_dead_leaf env dead route_func
+                resource_response updated_state "Handled!" 200
             | None ->
                 printfn "DEAD: Already handled..."
-                node, inter.state, ("Already handled", 200)
+                resource_response env.state "Already handled" 200
         else
             // Route it a little to the left
             let closer dst a b =
                 (distance a dst) < (distance b dst)
-            let folder k v acc =
-                if (valid_min_leaf node k) && (not (k = dead)) && (closer node.guid k acc) then
-                    k
+
+            let folder leaf_guid _ current_closest =
+                let minleaf = valid_min_leaf env.state.node leaf_guid
+                let notdead = not (leaf_guid = dead)
+                let closer_to_node = closer env.state.node.guid leaf_guid current_closest
+                if minleaf && notdead && closer_to_node then
+                    leaf_guid
                 else
-                    acc
-            let dst = Map.foldBack folder node.leaves node.minleaf
+                    current_closest
+            let dst = Map.foldBack folder env.state.node.leaves env.state.node.minleaf
             printfn "DEAD: Forwarding 'dead' call to %s" (serialize_guid dst)
-            route_func node DeadNode message dst inter
+            route_func env DeadNode message dst
     | Backup ->
         printfn "BACKUP: Backup received!"
-        { node with backup = message; }, inter.state, ("Backed up!", 200)
+        let new_node = { env.state.node with backup = message; }
+        resource_response { env.state with node = new_node;} "Backed up!" 200
 
     | GetState | Ping ->
         failwith "GetState and Ping messages are handled elsewhere!"
 
 // Routes something using the leaf set of the node
-let rec route_leaf (node: Node) (typ: MessageType) (msg: string) (key: GUID)
-        (route_func: RouteFunc<'a>) (inter: PastryInterface<'a>)
-        : Node * 'a * (string * int) =
+let rec route_leaf (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: GUID)
+        (route_func: RouteFunc<'a>) : ResourceResponse<'a> =
     let distance_check = fun leafkey _ acc ->
         if distance leafkey key < distance acc key then leafkey else acc
-    let closest = Map.foldBack distance_check node.leaves node.guid
-    if closest = node.guid then
-        let (node', state', resp) = handle_message node typ msg key route_func inter
-        node', state', resp
+    let closest = Map.foldBack distance_check env.state.node.leaves env.state.node.guid
+    if closest = env.state.node.guid then
+        handle_message env typ msg key route_func
     else
-        let address = Map.find closest node.leaves
+        let address = Map.find closest env.state.node.leaves
         match send_message address typ msg key with
-        | Some(result) ->
-            node, inter.state, result
+        | Some((resp, status)) ->
+            resource_response env.state resp status
         | None -> // HERE BE POSSIBLE DEADLOCKS (yay)
             // Fix the leaf
-            let (updated_node, updated_state) = handle_dead_leaf node closest route_func inter
-            let updated_inter = { inter with state = updated_state; }
+            let new_state = handle_dead_leaf env closest route_func
+            let new_env = { env with state = new_state; }
             // Retry
-            route_leaf updated_node typ msg key route_func updated_inter
+            route_leaf env typ msg key route_func
 
-// Messages
-// Join: join address
 // Routes a message somewhere
-let rec route<'a> (node: Node) (typ: MessageType) (msg: string) (key: GUID)
-        (inter: PastryInterface<'a>) : Node * 'a * (string * int) =
+let rec route<'a> (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: GUID)
+        : ResourceResponse<'a> =
     printfn "ROUTE: | Routing '%A'" typ
     printfn "ROUTE: | towards '%A'" key
-    let (node', state', message) =
+    let (new_state, message) =
         match typ with // This is actually okay since the nodes contain no strings
         | Join ->
             // NOTE NOTE NOTE ------- remove later!
             // Simulate some latency on localhost
 
             // If there is an old version in the leaf set
-            let (node', state') =
-                if Map.containsKey key node.leaves then
+            let new_state =
+                if Map.containsKey key env.state.node.leaves then
                     // Make sure it's dead before continuing!
                     printfn "DEAD: Removing old reference before forwarding"
-                    handle_dead_leaf node key route inter
+                    handle_dead_leaf env key route
                 else
-                    (node, inter.state)
+                    env.state
 
             printfn "Sleeping before forwarding join..."
             Thread.Sleep(1000)
             printfn "Done! Continuing..."
-            node', state', sprintf "%s%s%s" msg SEPARATOR (serialize node')
+            let msg = sprintf "%s%s%s" msg SEPARATOR (serialize new_state.node)
+            new_state, msg
         | _ ->
-            node, inter.state, msg
+            env.state, msg
 
-    let updated_inter = { inter with state = state'; }
-    let valid_leaf = (valid_min_leaf node' key) || (valid_max_leaf node' key)
+    let new_env = { env with state = new_state; }
+    let valid_leaf = (valid_min_leaf env.state.node key) || (valid_max_leaf env.state.node key)
     // Within leaf set
-    if valid_leaf || Map.isEmpty node'.leaves || (key = node'.guid) then
+    if valid_leaf || Map.isEmpty env.state.node.leaves || (key = env.state.node.guid) then
         //printfn "PASTRY: Found target within leaf set!"
-        route_leaf node' typ message key route updated_inter
+        route_leaf env typ message key route
     else
         //printfn "PASTRY: Checking routing table..."
         //printfn "PASTRY: Actually just using the leaf set ATM..."
         // Same check as above... for laziness
-        route_leaf node' typ message key route updated_inter
+        route_leaf env typ message key route
 
 // Attempts to forward a message to a pastry node using the given url parts
-let try_forward_pastry<'a> (node: Node) (cmd_str: string) (dst_str: string)
-        (body: string) (response: HttpListenerResponse) (inter: PastryInterface<'a>)
-        : InterpretResult<'a> =
+let try_forward_pastry<'a> (env: PastryEnv<'a>) (cmd_str: string) (dst_str: string)
+        (body: string) (response: HttpListenerResponse)
+        : ResourceResponse<'a> =
     match deserialize_guid dst_str with
     | Some(guid) ->
         match cmd_str with
         | "join" ->
             reply response "Forward attempted!" 200 "Ok"
-            let (node', state', _) = route node Join body guid inter
-            Valid(node', state')
+            route env Join body guid
         | "update" ->
             reply response "Forward attempted!" 200 "Ok"
-            let (node', state', _) = route node Update body guid inter
-            Valid(node', state')
+            route env Update body guid
         | "joinstate" ->
             reply response "Forward attempted!" 200 "Ok"
-            let (node', state', _) = handle_message node JoinState body guid route inter
-            Valid(node', state')
+            handle_message env JoinState body guid route
         | "backup" ->
             reply response "Forward attempted!" 200 "Ok"
-            let (node', state', _) = handle_message node Backup body guid route inter
-            Valid(node', state')
+            handle_message env Backup body guid route
         | "ping" ->
-            reply response (sprintf "PONG @ %s" (serialize_guid node.guid)) 200 "Ok"
-            Valid(node, inter.state)
+            let msg = sprintf "PONG @ %s" (serialize_guid env.state.node.guid)
+            reply response msg 200 "Ok"
+            resource_response env.state "Ok" 200
         | "getstate" ->
-            reply response (serialize node) 200 "Ok"
-            Valid(node, inter.state)
+            reply response (serialize env.state.node) 200 "Ok"
+            resource_response env.state "Ok" 200
         | "deadnode" ->
             reply response "Handling of death attempted" 200 "Ok"
-            let (node', state', _) = handle_message node DeadNode body guid route inter
-            Valid(node', state')
+            handle_message env DeadNode body guid route
         | "debug" ->
-            let msg = sprintf "==== Pastry state ====\n%A\n==== Application state ====\n%A" node inter.state
+            let a = sprintf "==== Pastry state ====\n%A" env.state.node
+            let msg = sprintf "%s\n==== Application state ====\n%A" a env.state.data
             reply response msg 200 "Ok"
-            Valid(node, inter.state)
+            resource_response env.state "Ok" 200
         | _ ->
             let error_message = sprintf "Bad pastry command: '%s'" cmd_str
-            Invalid(error_message, 400, "Not Found")
+            reply response error_message 400 "Not Found"
+            resource_response env.state error_message 400
     | None ->
         let error_message = sprintf "Invalid GUID received: '%s'" dst_str
-        Invalid(error_message, 404, "Not found")
+        reply response error_message 400 "Not Found"
+        resource_response env.state error_message 400
 
 // Creates a send func !
-let create_send_func<'a> (node: Node) (inter: PastryInterface<'a>): SendFunc<'a>=
-    let rec send_func (resource_path: string) (meth: string) (data: string) (state: 'a): ResourceResponse<'a> =
+let create_send_func<'a> (env: PastryEnv<'a>): SendFunc<'a> =
+    let rec send_func (resource_path: string) (meth: string) (data: string)
+            (state: PastryState<'a>): ResourceResponse<'a> =
         match get_destination (split resource_path '/') with
         | Ok(guid) ->
-            let (node', state', (resp, status)) =
-                route node (Resource(resource_path, meth)) data guid { inter with send = send_func; }
-            (state', resp, status)
+            let new_env = { env with send = send_func; state = state; }
+            route new_env (Resource(resource_path, meth)) data guid
 
         | Error(resp, status, reason) ->
             error <| sprintf "Could not send '%s' message from repo to '%s'" meth resource_path
-            (state, resp, status)
+            resource_response state resp status
     send_func
 
 // Attempts to forward some given url parts
-let try_forward_resource<'a> (node: Node) (split_res_path: string list)
+let try_forward_resource<'a> (env: PastryEnv<'a>) (split_res_path: string list)
         (meth: string) (data: string) (response: HttpListenerResponse)
-        (inter: PastryInterface<'a>) : InterpretResult<'a> =
+        : ResourceResponse<'a> =
     match get_destination split_res_path with
     | Ok(guid) ->
         // Construct the message function used by the repo to route messages out
         let resource_url = String.concat "/" split_res_path
-        let (node', state', (message, status)) = route node (Resource(resource_url, meth)) data guid inter
-        reply response message status "Ok"
-        Valid(node', state')
+        let route_response = route env (Resource(resource_url, meth)) data guid
+        reply response route_response.message route_response.status "Ok"
+        route_response
     | Error(msg, status, reason) ->
-        Invalid(msg, status, reason)
+        reply response msg status reason
+        resource_response env.state msg status
 
 // Pings the closest bigger neighbor of a node to see if it's still alive
-let ping_neighbor<'a> (node: Node) (inter: PastryInterface<'a>) : Node * 'a =
-    let neighbor = find_watched_neighbor node
+let ping_neighbor<'a> (env: PastryEnv<'a>) : PastryState<'a> =
+    let neighbor = find_watched_neighbor env.state.node
     printfn "PING: -> %s" (serialize_guid neighbor)
-    if neighbor = node.guid then // No smaller leaves
+    if neighbor = env.state.node.guid then // No smaller leaves
         // Send it to the highest leaf
         printfn "PING: No other leaves, ping delayed..."
-        node, inter.state
+        env.state
     else
         let address =
-            match Map.tryFind neighbor node.leaves with
+            match Map.tryFind neighbor env.state.node.leaves with
             | Some(addr) ->
                 addr
             | None ->
@@ -581,25 +464,25 @@ let ping_neighbor<'a> (node: Node) (inter: PastryInterface<'a>) : Node * 'a =
         match send_message address Ping "" neighbor with
         | None ->
             printfn "PING: Neighbor is dead, do something!"
-            handle_dead_leaf node neighbor route inter
+            handle_dead_leaf env neighbor route
         | Some(resp, status) ->
-            node, inter.state
+            env.state
 
 // Makes the given pastry node start listening...
-let start_listening<'a when 'a: equality> (node: Node) (inter_arg: PastryInterface<'a>) =
+let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
     printfn "Initializing..."
     use listener = new System.Net.HttpListener ()
-    let basepath = sprintf "http://%s/" node.address
+    let basepath = sprintf "http://%s/" env.state.node.address
     printfn "Listening at '%s'..." basepath
     listener.Prefixes.Add basepath
     listener.Start ()
 
     // Listen for a a message
-    let rec listen (node: Node) (old_inter: PastryInterface<'a>) =
+    let rec listen (old_env: PastryEnv<'a>) =
         printf "> " // Show that pastry is listening and not dead
 
         // Update the send function!
-        let inter = { old_inter with send = create_send_func node old_inter; }
+        let env = { old_env with send = create_send_func old_env; }
 
         let cxt      = listener.GetContext()
         let request  = cxt.Request
@@ -614,14 +497,17 @@ let start_listening<'a when 'a: equality> (node: Node) (inter_arg: PastryInterfa
             is.ReadToEnd()
         let parts = split (path.[1..]) '/' // That annoying first slash...
         // Now interpret what was received
-        let result =
+        let new_state =
             match parts with
             | "pastry"::cmd_string::dst_string::[] ->
-                try_forward_pastry node cmd_string dst_string body response inter
+                let res_resp = try_forward_pastry env cmd_string dst_string body response
+                res_resp.state
 
             | "pastry"::stuff -> // only handles '/pastry'
                 let error_message = sprintf "Unrecognized pastry request url: '%s'" path
-                Invalid(error_message, 404, "Illegal action")
+                error error_message
+                reply response error_message 404 "Not found"
+                env.state
 
             | "resource"::resource_path_parts -> // Someone requests a resource
                 // Get the data from a GET request
@@ -633,61 +519,25 @@ let start_listening<'a when 'a: equality> (node: Node) (inter_arg: PastryInterfa
                     else
                         body
 
-                let res = try_forward_resource node resource_path_parts meth data response inter
-                // Handle sending of backups
-                match res with
-                | Valid(node', state') ->
-                    // Find out whether the request was handled on this server
-                    // NOTE: without this check the program will deadlock
-                    // when there is just two nodes and a resource request passes
-                    // through both of them
-                    if not (state' = inter.state) then // WOW THIS IS UGLY PLEASE MAKE IT STOP!
-                        // Serialize the updated state
-                        let state_msg = inter.serialize state'
-
-                        // Send it to the node closest to itself
-                        send_backup_state node state_msg
-
-                    res
-                | _ -> res
-
+                let res = try_forward_resource env resource_path_parts meth data response
+                if not (res.state.data = env.state.data) then // WOW THIS IS UGLY PLEASE MAKE IT STOP!
+                    send_backup_state res.state.node <| env.serialize res.state.data
+                res.state
             | _ ->
                 let error_message = sprintf "Not related to this: %s" path
-                Invalid(error_message, 200, "Not found")
+                error error_message
+                reply response error_message 404 "Not found"
+                env.state
 
-        // NOTE: Only invalid requests are automatically replied
-        match result with
-        | Valid(updated_node, updated_state) ->
-            //let updated_node' = ping_neighbor updated_node inter
-            let updated_node' = updated_node
-            listen updated_node' { inter with state = updated_state; }
-        | Invalid(error_message, status, reason) ->
-            error error_message
-            reply response error_message status reason
-            //let updated_node = ping_neighbor node inter
-            let updated_node = node
-            listen updated_node inter
+        listen { env with state = new_state; }
 
     // Start listening
-    ignore <| listen node inter_arg
-
-// Returns whether the given resource belongs on this pastry node or another
-let belongs_on_other (self_guid: string) (resource: string) (other_guid: string) : bool =
-    let (self, other) =
-        match deserialize_guid self_guid, deserialize_guid other_guid with
-        | Some(a), Some(b) -> a, b
-        | _ -> failwith (sprintf "Invalid guids given: %s %s" self_guid other_guid)
-    let path = split resource '/'
-    match get_destination path with
-    | Ok(guid) ->
-        distance self guid < distance other guid
-    | Error(_) ->
-        failwith "Bad resource url: '%s'" resource
+    ignore <| listen env
 
 // "Actually" starts the server. Used by the interface functions
 let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (peer: NetworkLocation option)
         (handler: ResourceRequestFunc<'a>) (serializer: SerializeFunc<'a>)
-        (guid: GUID) (state: 'a) =
+        (guid: GUID) (data: 'a) =
     printfn "? Pastry GUID: %s" (serialize_guid guid)
     let node: Node = { // Create a new node
         guid = guid;
@@ -699,39 +549,39 @@ let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (pe
         routing_table = [];
         backup = "";
     }
-    let dummy_sender path meth data state =
+    let dummy_sender env path meth data =
         failwith "ASSERTION FAILED: Dummy send func not replaced before use!"
 
-    let inter: PastryInterface<'a> = { // Create the inter parts
+    let env: PastryEnv<'a> = { // Create the inter parts
         send = dummy_sender;
         handle = handler;
         serialize = serializer;
-        state = state;
+        state = { node = node; data = data; };
     }
     match peer with
     | None ->
-        start_listening<'a> node inter
+        start_listening<'a> env
     | Some(peer) ->
         match send_message peer Join address guid with
         | None ->
             error <| sprintf "Could not establish a connection with peer at '%s'" peer
         | Some(_) ->
-            start_listening<'a> node inter
+            start_listening<'a> env
 
 // Starts a server with a fixed guid in string from
 let test_server<'a when 'a: equality> (address: NetworkLocation) (peer: NetworkLocation option)
         (handler: ResourceRequestFunc<'a>) (serializer: SerializeFunc<'a>)
-        (guid_str: string) (state: 'a) =
+        (guid_str: string) (data: 'a) =
     let guid =
         match deserialize_guid guid_str with
         | Some(id) -> id
         | None -> failwith "Invalid GUID given!"
-    start_server_fixed_guid address peer handler serializer guid state
+    start_server_fixed_guid address peer handler serializer guid data
 
 // Creates a local node and makes it join the Pastry network
 let start_server<'a when 'a: equality> (address: NetworkLocation) (peer: NetworkLocation option)
         (handler: ResourceRequestFunc<'a>) (serializer: SerializeFunc<'a>)
-        (state: 'a) =
+        (data: 'a) =
     let guid = hash address
-    start_server_fixed_guid address peer handler serializer guid state
+    start_server_fixed_guid address peer handler serializer guid data
 

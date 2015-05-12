@@ -2,32 +2,45 @@ module Pastry
 
 open PastryTypes
 
+// The main state of pastry
+type PastryState<'a> = {
+    node: Node; // Because nodes change during routing
+    data: 'a;   // The data of the application
+}
+
 // Updated state, response, status code
-type ResourceResponse<'a> = 'a * string * int
+type ResourceResponse<'a> = {
+    state: PastryState<'a>
+    message: string;    // Http response string
+    status: int;        // Http status code
+}
 
 // A function for the resource request func to send requests through
 // partial_resource_url, method, data, state -> response
-type SendFunc<'a> = string -> string -> string -> 'a -> ResourceResponse<'a>
+type SendFunc<'a> = string -> string -> string -> PastryState<'a> -> ResourceResponse<'a>
 
 // A function to handle resource requests
 // url, method, data, send_func, state -> response
-type ResourceRequestFunc<'a> = string -> string -> string -> SendFunc<'a> -> 'a -> ResourceResponse<'a>
+type ResourceRequestFunc<'a> = string -> string -> string -> SendFunc<'a> -> PastryState<'a> -> ResourceResponse<'a>
 
 // A function to serialize the state passed through pastry
 type SerializeFunc<'a> = 'a -> string
 
-// A record containing the types needed to interface properly with the pastry
-// network
-type PastryInterface<'a> = {
+// A record used for passing the current application environment easily through
+// functions
+type PastryEnv<'a> = {
     send: SendFunc<'a>;
     handle: ResourceRequestFunc<'a>;
     serialize: SerializeFunc<'a>;
-    state: 'a;
+    state: PastryState<'a>;
 }
+
+// Creates a new resource response from the given values
+val resource_response<'a when 'a: equality> : PastryState<'a> -> string -> int -> ResourceResponse<'a>
 
 // Returns whether the given resource belongs on this pastry node or another
 // self_guid resource other_guid
-val belongs_on_other: string -> string -> string -> bool
+val belongs_on_other : string -> string -> string -> bool
 
 // Creates a local node and makes it join the Pastry network
 // Whenever a request for a resource enters, the resource request func is called

@@ -48,11 +48,6 @@ type SerializableNode = {
     backup: string;
 }
 
-// A result type to simplify the interpretation a little
-type InterpretResult<'a> =
-| Valid of Node * 'a
-| Invalid of string * int * string
-
 type Destination =
 | Ok of GUID
 | Error of string * int * string
