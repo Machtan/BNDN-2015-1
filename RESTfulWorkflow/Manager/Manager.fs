@@ -22,8 +22,11 @@ let rec addFilesToMap (files : FileInfo []) : Map<string,string> =
 //Adds a new role to the workflow
 let addRole name roles =
     if List.exists (fun x -> x = name) roles
-    then printfn "WARNING: The role (%s) already exists" name; roles
-    else name::roles
+    then
+        printfn "WARNING: The role (%s) already exists" name
+        roles
+    else
+        name::roles
 
 type Query =
 | Workflow of string * string
@@ -50,40 +53,62 @@ let upload (query : Query) (meth: string) (data: string) =
             System.Console.ReadKey() |> ignore
 
 //Parses a string into a specific post to the server.
-let parse (line : string) roles useroles (workflow: string) : string list * string=
+let parse (line : string) (roles: string list) (use_roles: bool)
+        (workflow: string) : string list * string=
+    //printfn "Workflow: %s | Roles: %A" workflow roles
     let words = List.ofArray(line.Split ' ')
+    System.Threading.Thread.Sleep(10)
     match words with
-    | "wor"::name::[] ->
+    | "wor"::name::[] -> // Workflow
         printfn ">> Setting workflow name to '%s'" name
         upload (Workflow(name, "")) "POST" ""
         [], name
-    | "rol"::name::[] ->
+
+    | "rol"::name::[] -> // Role
         (addRole name roles), workflow
-    | "eve"::flags::name::eventroles ->
+
+    | "use"::name::user_roles -> // User
+        let create_query = User(name)
+        upload create_query "POST" ""
+        System.Threading.Thread.Sleep(10)
+
+        let data = String.concat "," user_roles
+        let query = User(sprintf "%s/roles/%s" name workflow)
+        upload query "PUT" data
+        roles, workflow
+
+    | "eve"::flags::name::eventroles -> // Event
         let query = Workflow(workflow, name)
-        if useroles
-        then
-            if List.forall (fun x -> List.exists (fun x' -> x' = x) roles) eventroles
-            then
+        if use_roles then
+            let role_found event_role =
+                List.exists (fun role -> role = event_role) roles
+            let all_roles_found = List.forall role_found eventroles
+            if all_roles_found then
                 let data = sprintf "%s,%s" flags (String.concat "," eventroles)
                 upload query "POST" data
+            else
+                failwith "ERROR: All roles of the event were not found!"
         else
             upload query "POST" flags
-            
+
         let add_query = Workflow(workflow, "")
         System.Threading.Thread.Sleep(10)
         upload add_query "PUT" name
 
         roles, workflow
-    | "rel"::event::typ::to_event::[] ->
+
+    | "rel"::event::typ::to_event::[] -> // Relation
         let query = Workflow(workflow, sprintf "%s/%s/to" event typ)
         let data = sprintf "%s,%s" workflow to_event
         upload query "PUT" data
         roles, workflow
-    | "//"::xs | "#"::xs ->
+
+    | "//"::xs | "#"::xs -> // Comment
         roles, workflow
+
     | ""::[] ->
         roles, workflow
+
     | x ->
         printfn "WARNING: '%s' is not parsable" (String.concat " " x)
         roles, workflow
@@ -99,9 +124,9 @@ let rec promptParseFile fileMap =
         | Some(name)    -> name
 
     printfn "Use roles? (y/n)"
-    let useroles = System.Console.ReadLine()
-    let useroles =
-        match useroles with
+    let use_roles = System.Console.ReadLine()
+    let use_roles =
+        match use_roles with
         | "y"           -> true
         | "n"           -> false
         | _             -> printfn "Defaults to yes" ; true
@@ -109,8 +134,7 @@ let rec promptParseFile fileMap =
     if File.Exists(filename)
     then
         let folder (roles, workflow) line =
-            System.Threading.Thread.Sleep(10)
-            parse line roles useroles workflow
+            parse line roles use_roles workflow
         File.ReadAllLines(filename) |> List.ofArray |> List.fold folder ([], "test")
     else
         printfn "ERROR: Could not find file"

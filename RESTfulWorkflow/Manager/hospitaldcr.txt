@@ -7,6 +7,12 @@ rol Patient
 rol Reception_1
 rol Reception_2
 rol UBS_management
+use Test EHealth Hospital_management Hospital_specialist Non_specialist_physician_UBS Patient Reception_1 Reception_2
+use Patient Patient
+use EHealth EHealth
+use Hospital Hospital_management Hospital_specialist
+use UBS Non_specialist_physician_UBS UBS_management
+use Reception Reception_1 Reception_2
 eve 1000 Request_examinations Non_specialist_physician_UBS
 eve 1000 Organize_queue Reception_2
 eve 0000 Create_medical_report Hospital_specialist
