@@ -56,7 +56,7 @@ def dcrconv(file):
         inc = "1" if eid in included else "0"
         pen = "1" if eid in pending else "0"
         exe = "1" if eid in executed else "0"
-        events[eid].append(inc + pen + exe)
+        events[eid].append(inc + pen + exe + "0")
 
     #pprint.pprint(events)
     for event, attrs in events.items():

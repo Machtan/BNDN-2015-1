@@ -1,0 +1,29 @@
+wor Additional_workflow
+rol Auditor
+rol Caseworker
+rol Customer
+rol Intern
+rol it
+rol Mobile_consultant
+eve 1000 Appraisal_audit Auditor
+eve 1000 Statistical_appraisal Caseworker
+eve 1100 Assess_loan_application Caseworker
+eve 1000 Irregular_neighbourhood it
+eve 1000 On-site_appraisal Mobile_consultant
+eve 0000 Make_appraisal_appointment Mobile_consultant
+eve 1000 Submit_budget Customer
+eve 1000 Collect_documents Caseworker
+eve 1100 Budget_screening_approve Intern
+rel Collect_documents condition Irregular_neighbourhood
+rel Make_appraisal_appointment condition On-site_appraisal
+rel Submit_budget condition Budget_screening_approve
+rel On-site_appraisal condition Assess_loan_application
+rel Statistical_appraisal condition Assess_loan_application
+rel Collect_documents condition Assess_loan_application
+rel Irregular_neighbourhood inclusion Make_appraisal_appointment
+rel Appraisal_audit inclusion On-site_appraisal
+rel Submit_budget response Budget_screening_approve
+rel Budget_screening_approve response Assess_loan_application
+rel On-site_appraisal exclusion Statistical_appraisal
+rel Irregular_neighbourhood exclusion Statistical_appraisal
+rel Statistical_appraisal exclusion On-site_appraisal
