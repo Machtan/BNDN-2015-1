@@ -359,15 +359,9 @@ let add_event_roles (eventName : EventName) (roles : Roles)
 let add_relation_to (fromEvent : EventName) (relations : RelationType)
         (toEvent : EventName) (sendFunc : SendFunc<Repository>)
         (state : PastryState<Repository>) : Result =
-    let cmd = AddFromRelation(fromEvent, relations, toEvent)
-    let result = send cmd sendFunc state
-    if check_if_positive result.status then
-        let inner (event : Event) : UpdateEventResult =
-            EventOk({event with toRelations = Set.add (relations, toEvent) event.toRelations})
-        update_inner_event fromEvent inner result.state
-    else
-        printfn ">>>>>>>>>>>>> Add Relation To: Error - %d | %s" result.status result.message
-        MissingEvent(result.state)
+    let inner (event : Event) : UpdateEventResult =
+        EventOk({event with toRelations = Set.add (relations, toEvent) event.toRelations})
+    update_inner_event fromEvent inner result.state
 
 /// Adds given relationships (going to given event) to given event and returns the result
 let add_relation_from (fromEvent : EventName) (relations : RelationType)
@@ -431,19 +425,13 @@ let unlock_event (eventName : EventName) (state : PastryState<Repository>)
 let remove_relation_to (fromEvent : EventName) (relations : RelationType)
         (toEvent : EventName) (sendFunc : SendFunc<Repository>)
         (state: PastryState<Repository>) : Result =
-    let cmd = RemoveFromRelation(fromEvent, relations, toEvent)
-    let result = send cmd sendFunc state
-    if check_if_positive result.status then
-        let inner (event : Event) : UpdateEventResult =
-            if Set.contains (relations, toEvent) event.toRelations then
-                let to_relations = Set.remove (relations, toEvent) event.toRelations
-                EventOk({event with toRelations = to_relations; })
-            else
-                EventErr(MissingRelation(result.state))
-        update_inner_event fromEvent inner result.state
-    else
-        printfn ">>>>>>>>>>>>> Remove Relation To: Error - %d | %s" result.status result.message
-        MissingEvent(result.state)
+    let inner (event : Event) : UpdateEventResult =
+        if Set.contains (relations, toEvent) event.toRelations then
+            let to_relations = Set.remove (relations, toEvent) event.toRelations
+            EventOk({event with toRelations = to_relations; })
+        else
+            EventErr(MissingRelation(result.state))
+    update_inner_event fromEvent inner result.state
 
 /// Removes given relation form given event and returns the result
 let remove_relation_from (fromEvent : EventName) (relations : RelationType)
@@ -469,7 +457,7 @@ let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>)
 
         // Continues despite failing: TODO: change
         let remove_to_relation (reltype, target) (succesful, new_state) =
-            let cmd = RemoveToRelation(eventName, reltype, target)
+            let cmd = RemoveFromRelation(eventName, reltype, target)
             let result = send cmd sendFunc new_state
             if succesful && (check_if_positive result.status) then
                 (true, result.state)
@@ -483,7 +471,7 @@ let delete_event (eventName : EventName) (sendFunc : SendFunc<Repository>)
 
             // Continues despite failing: TODO: change
             let remove_from_relation (reltype, target) (succesful, new_state) =
-                let cmd = RemoveFromRelation(eventName, reltype, target)
+                let cmd = RemoveToRelation(target, reltype, eventName)
                 let result = send cmd sendFunc new_state
                 if succesful && (check_if_positive result.status) then
                     (true, result.state)

@@ -101,6 +101,11 @@ let parse (line : string) (roles: string list) (use_roles: bool)
         let query = Workflow(workflow, sprintf "%s/%s/to" event typ)
         let data = sprintf "%s,%s" workflow to_event
         upload query "PUT" data
+        System.Threading.Thread.Sleep(10)
+
+        let from_query = Workflow(workflow, sprintf "%s/%s/from" to_event typ)
+        let from_data = sprintf "%s,%s" workflow event
+        upload from_query "PUT" from_data
         roles, workflow
 
     | "//"::xs | "#"::xs -> // Comment
