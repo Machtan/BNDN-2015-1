@@ -354,7 +354,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
             match meth with
             | "GET" ->
                 Download(url, message)
-            | "PUT" ->
+            | "PUT" | "POST" | "DELETE" ->
                 Upload(url, meth, message)
             | _ ->
                 failwith "ASSERTION FAILED: Got unknown HTTP method in pastry send_message!"
@@ -403,6 +403,8 @@ let get_destination (resource_url: string list): Destination =
     | "log"::workflow::[] ->
         Ok(hash (sprintf "workflow/%s" workflow))
     | "log"::workflow::event::[] ->
+        Ok(hash (sprintf "workflow/%s" workflow))
+    | "debug"::workflow::[] ->
         Ok(hash (sprintf "workflow/%s" workflow))
     | unknown_resource::whatever ->
         let error_message = sprintf "UTILS: Unknown resource type: '%s'" unknown_resource
