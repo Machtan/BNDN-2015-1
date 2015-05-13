@@ -1,11 +1,19 @@
 module Pastry
 
+open System.Net
 open PastryTypes
+
+type Request = {
+    url: string;
+    meth: string;
+    data: string;
+}
 
 // The main state of pastry
 type PastryState<'a> = {
     node: Node; // Because nodes change during routing
     data: 'a;   // The data of the application
+    requests: Map<Request, HttpListenerResponse list>;
 }
 
 // Updated state, response, status code

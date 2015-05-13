@@ -353,6 +353,25 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
             | _ ->
                 failwith "ASSERTION FAILED: Got unknown HTTP method in pastry send_message!"
         send_http action timeout
+
+    | Request(location, port, url, meth, data) ->
+        let url = sprintf "http://%s/pastry/request/%s/%s/%s" address location port url
+        let action =
+            match meth with
+            | "GET" ->
+                Download(url, data)
+            | "PUT" | "POST" | "DELETE" ->
+                Upload(url, meth, data)
+            | _ ->
+                failwith "Unknown request type gotten: %s" meth
+        send_http action timeout
+
+    | Collect(url, meth, data, resp, status) ->
+        let return_url = sprintf "http://%s/pastry/collect/%s" address url
+        let return_data = sprintf "%s\n%s\n%s\n%d" data meth resp status
+        let action = Upload(url, "PUT", return_data)
+        send_http action timeout
+
     | _ ->
         let cmd =
             match typ with
@@ -363,7 +382,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
             | Ping          -> "ping"
             | GetState      -> "getstate"
             | DeadNode      -> "deadnode"
-            | Resource(_)   -> failwith "Got past a match on 'Resource'"
+            | _             -> failwith "Got past a match on '%A'" typ
         let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
         if not (typ = Backup) then
             printfn "SEND: %s => %s" url message

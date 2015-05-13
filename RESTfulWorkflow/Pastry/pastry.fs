@@ -16,10 +16,21 @@ let SEPARATOR = " SEPARATOR " // This is silly, but safe...
 
 // ============ TYPES FOR THE INTERFACE ===============
 
+// A type to keep track of pending requests
+type Request = {
+    url: string;
+    meth: string;
+    data: string;
+}
+// Creates a new request
+let new_request (url: string) (meth: string) (data: string) : Request =
+    { url = url; meth = meth; data = data; }
+
 // The main state of pastry
 type PastryState<'a> = {
     node: Node; // Because nodes change during routing
     data: 'a;   // The data of the application
+    requests: Map<Request, HttpListenerResponse list>;
 }
 
 // Updated state, response, status code
@@ -447,7 +458,7 @@ let create_send_func<'a> (env: PastryEnv<'a>): SendFunc<'a> =
 // Attempts to forward some given url parts
 let try_forward_resource<'a> (env: PastryEnv<'a>) (split_res_path: string list)
         (meth: string) (data: string) (response: HttpListenerResponse)
-        : ResourceResponse<'a> =
+        (original_address: string): ResourceResponse<'a> =
     match get_destination split_res_path with
     | Ok(guid) ->
         // Construct the message function used by the repo to route messages out
@@ -512,9 +523,53 @@ let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
             use is = new System.IO.StreamReader(request.InputStream, request.ContentEncoding)
             is.ReadToEnd()
         let parts = split (path.[1..]) '/' // That annoying first slash...
+
+        // Get the data from a GET request
+        let data =
+            if meth = "GET" then
+                let d = args.Get "data"
+                if d = null then ""
+                else d
+            else
+                body
+
         // Now interpret what was received
         let new_state =
             match parts with
+            | "pastry"::"collect"::url ->
+                let COLLECT_SEPARATOR = '\n'
+                let args = split body COLLECT_SEPARATOR
+                let initial_data = args.[0] // initial data
+                let initial_meth = args.[1]
+                let data = args.[2]
+                let status = int args.[3]
+                let new_requests =
+                    let request_url = String.concat "/" url
+                    let request = new_request request_url initial_meth initial_data
+                    match Map.tryFind request env.state.requests with
+                    | Some(responses) ->
+                        let respond response =
+                            reply response data status "Ok"
+                        List.iter respond responses
+                        Map.remove request env.state.requests
+                    | None ->
+                        printfn "Request '%A' no found!" request
+                        env.state.requests
+                {env.state with requests = new_requests;}
+
+            // Forward or handle a request from somewhere for some data
+            | "pastry"::"request"::address::port::url ->
+                reply response "Received" 200 "Ok"
+                let original_address = sprintf "%s:%s" address port
+                let res = try_forward_resource env url meth data response original_address
+                res.state
+
+            | "resource"::url -> // Someone requests a resource
+                let res = try_forward_resource env url meth data response env.state.node.address
+                if not (res.state.data = env.state.data) then // WOW THIS IS UGLY PLEASE MAKE IT STOP!
+                    send_backup_state res.state.node <| env.serialize res.state.data
+                res.state
+
             | "pastry"::cmd_string::dst_string::[] ->
                 let res_resp = try_forward_pastry env cmd_string dst_string body response
                 res_resp.state
@@ -525,20 +580,7 @@ let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
                 reply response error_message 404 "Not found"
                 env.state
 
-            | "resource"::resource_path_parts -> // Someone requests a resource
-                // Get the data from a GET request
-                let data =
-                    if meth = "GET" then
-                        let d = args.Get "data"
-                        if d = null then ""
-                        else d
-                    else
-                        body
 
-                let res = try_forward_resource env resource_path_parts meth data response
-                if not (res.state.data = env.state.data) then // WOW THIS IS UGLY PLEASE MAKE IT STOP!
-                    send_backup_state res.state.node <| env.serialize res.state.data
-                res.state
             | _ ->
                 let error_message = sprintf "Not related to this: %s" path
                 error error_message
@@ -572,7 +614,7 @@ let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (pe
         send = dummy_sender;
         handle = handler;
         serialize = serializer;
-        state = { node = node; data = data; };
+        state = { node = node; data = data; requests = Map.empty;};
     }
     match peer with
     | None ->

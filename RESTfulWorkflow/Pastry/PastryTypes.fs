@@ -16,13 +16,14 @@ type MessageType =
 | Join      // A new node is joining and requesting states
 | Update    // A new node has been added sucessfully: update to include it
 | JoinState // The state data for a new node
-// Request a resource somewhere to be routed back using the context
 | Resource of string * string
 // Add more persistency commands here
 | Backup        // This is the backup state of a watched node
 | Ping          // You alive, mate?
 | GetState      // Hey, I need something you have (such as a new leaf)
 | DeadNode      // Someone has died. Find the one who can fix it
+| Request of string * string * string * string * string // location port url meth data
+| Collect of string * string * string * string * int // url meth data resp
 
 // A result type for HTTP requests
 type HttpResult =
