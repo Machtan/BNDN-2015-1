@@ -29,7 +29,7 @@ let get_command (typ: CommandType) : Command =
         cmd (sprintf "user/%s" user) "POST" ""
 
     | AddRoles(user, workflow, roles) ->
-        cmd (sprintf "user/%s/%s" user workflow) "PUT" (String.concat "," roles)
+        cmd (sprintf "user/%s/roles/%s" user workflow) "PUT" (String.concat "," roles)
 
     | CreateWorkflow(workflow) ->
         cmd (sprintf "workflow/%s" workflow) "POST" ""
@@ -65,22 +65,26 @@ let get_migratable_commands (predicate: string -> bool)
     (state: PastryState<Repository>): PastryState<Repository> * Command list =
     // Add the event creation commands to the back of the list
     // And find out which events to not migrate
-    let event_folder workflow events (event_map, cmds) =
-        let content_folder eventname (locked, state) (wf_events, i_cmds) =
-            let typ = CreateEvent(workflow, eventname, state.included, state.pending, state.executed, locked, state.roles)
-            if predicate (get_command typ).path then
-                let relation_folder (rt, (rwf, rev)) ii_cmds =
-                    (AddRelation(workflow, eventname, rt, rwf, rev))::ii_cmds
-                wf_events, typ::(Set.foldBack relation_folder state.toRelations i_cmds)
+    let event_folder workflow events (event_map, cmds, rel_cmds) =
+        let content_folder eventname (locked, state) (wf_events, i_cmds, i_rel_cmds) =
+            // Get a create command for the event
+            let create_cmd = CreateEvent(workflow, eventname, state.included, state.pending, state.executed, locked, state.roles)
+            if predicate (get_command create_cmd).path then
+                // Fold the relations in their own list (must be added after all events)
+                let relation_folder (rt, (rwf, rev)) ii_rel_cmds =
+                    (AddRelation(workflow, eventname, rt, rwf, rev))::ii_rel_cmds
+                wf_events, create_cmd::i_cmds, (Set.foldBack relation_folder state.toRelations i_rel_cmds)
             else
-                (Map.add eventname (locked, state) wf_events), i_cmds
-        let wf_events, i_cmds = Map.foldBack content_folder events (Map.empty, cmds)
+                (Map.add eventname (locked, state) wf_events), i_cmds, i_rel_cmds
+        let wf_events, i_cmds, i_rel_cmds = Map.foldBack content_folder events (Map.empty, cmds, rel_cmds)
         if wf_events.Count > 0 then // Don't keep empty workflow data
-            Map.add workflow wf_events event_map, i_cmds
+            Map.add workflow wf_events event_map, i_cmds, i_rel_cmds
         else
-            event_map, i_cmds
-    let (events, event_cmds) =
-        Map.foldBack event_folder state.data.events (Map.empty, [])
+            event_map, i_cmds, i_rel_cmds
+    let (events, create_event_cmds, rel_cmds) =
+        Map.foldBack event_folder state.data.events (Map.empty, [], [])
+
+    let event_cmds = List.append create_event_cmds rel_cmds
 
     // Add the workflow creation commands before the events
     let workflow_folder (name: string) (workflow: Workflow) (updated_workflows, cmds) =
@@ -113,7 +117,9 @@ let get_migratable_commands (predicate: string -> bool)
 
     let new_data = { state.data with events = events; workflows = workflows; users = users; }
     let new_state = { state with data = new_data; }
-    new_state, List.map get_command all_cmds
+    let commands = List.map get_command all_cmds
+    //printfn "MIGRATE: Commands -\n%A" commands
+    new_state, commands
 
 // Gets all the migration commands (YES!)
 let get_all_migration_commands (state: PastryState<Repository>) : Command list =

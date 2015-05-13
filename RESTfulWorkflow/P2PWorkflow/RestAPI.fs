@@ -430,7 +430,7 @@ let handle_full_migration (meth: string) (data: string)
             let migrate cmd new_state =
                 let result = send_func cmd.path cmd.meth cmd.data new_state
                 result.state
-            let new_state = List.foldBack migrate cmds state
+            let new_state = List.fold migrate state cmds
             printfn ">>> Finished migrating!"
             resource_response new_state "Migrated!" 200
         | _ ->
@@ -448,7 +448,7 @@ let handle_partial_migration (meth: string) (from_guid: string) (to_guid: string
         let migrate cmd new_state =
             let result = send_func cmd.path cmd.meth cmd.data new_state
             result.state
-        let final_state = List.foldBack migrate cmds new_state
+        let final_state = List.fold migrate new_state cmds
         resource_response final_state "Migrated!" 200
 
     | _ ->
