@@ -363,7 +363,8 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
             | DeadNode      -> "deadnode"
             | Resource(_)   -> failwith "Got past a match on 'Resource'"
         let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
-        printfn "SEND: %s => %s" url message
+        if not (typ = Backup) then
+            printfn "SEND: %s => %s" url message
         send_http <| Upload(url, "PUT", message) <| timeout
 
 // Returns the destination of a given split resource url (after the /resources/ part)

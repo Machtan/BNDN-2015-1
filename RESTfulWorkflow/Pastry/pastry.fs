@@ -96,7 +96,7 @@ let send_backup_state (node: Node) (state_msg: string) =
         | HttpResult.Ok(msg) ->
             printfn "BACKUP: Backed up succesfully! (%s)" msg
         | HttpResult.ConnectionError(msg) ->
-            printfn "BACKUP: Connection Error: %s" msg
+            printfn "BACKUP: Connection Error!"
         | HttpResult.Error(msg, status) ->
             printfn "BACKUP: No reply for backup: Handle node failure? (%d %s)" status msg
 
@@ -222,7 +222,7 @@ let handle_dead_leaf<'a> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFun
             if not (guid = leaf) then try_add_leaf new_node guid addr
             else new_node
         let new_node = Map.foldBack update_folder state.leaves final_env.state.node
-        { new_env.state with node = new_node; }
+        { final_env.state with node = new_node; }
 
 // Updates this node based on a new node that is joining the network
 let update_node<'a> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
@@ -345,7 +345,7 @@ let rec route_leaf (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: G
             let new_state = handle_dead_leaf env closest route_func
             let new_env = { env with state = new_state; }
             // Retry
-            route_leaf env typ msg key route_func
+            route_leaf new_env typ msg key route_func
 
 // Routes a message somewhere
 let rec route<'a> (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: GUID)
@@ -481,7 +481,7 @@ let ping_neighbor<'a> (env: PastryEnv<'a>) : PastryState<'a> =
             printfn "PING: why did it return an error? %d | %s" status msg
             env.state
         | HttpResult.ConnectionError(message) ->
-            printfn "PING: Neighbor is dead, do something!: %s" message
+            printfn "PING: Neighbor is dead, do something!"
             handle_dead_leaf env neighbor route
 
 // Makes the given pastry node start listening...

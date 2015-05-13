@@ -8,6 +8,7 @@ libraries = [
     "Pastry",
     "PastryTypes",
     "PastryUtils",
+    "WebClientWithTimeout",
 ]
 
 includes = [
