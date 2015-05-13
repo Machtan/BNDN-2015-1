@@ -242,7 +242,7 @@ let update_node<'a> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
 // Handles a message intended for this node
 let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
         (key: GUID) (route_func: RouteFunc<'a>) : ResourceResponse<'a> =
-    //printfn "HANDLE: | Handling '%A'" typ
+    printfn "HANDLE: | Handling '%A'" typ
     //printfn "HANDLE: | '%s'" message
     match typ with
     | Join -> // A node is requesting to join, and this is the one with the nearest GUID
@@ -250,7 +250,11 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
         let address = message.[..firstsep-1]
         let states = message.[firstsep + SEPARATOR.Length..]
         // Failure is unimportant here, no?
-        ignore <| send_message address JoinState states key
+        match send_message address JoinState states key None with
+        | HttpResult.Ok(message) ->
+            printfn "Node %s sent of sates succesfully" (serialize_guid key)
+        | HttpResult.Error(message, status) ->
+            printfn "Error for %s when sending join state batch: %d | %s" (serialize_guid key) status message
         resource_response env.state "" 200
 
     | JoinState -> // This node receives the states needed to initialize itself

@@ -305,8 +305,10 @@ let send_http (action: HttpAction) (timeout: int option): HttpResult =
     try
         use w: WebClient =
             match timeout with
-            | None -> new WebClient ()
-            | Some(milliseconds) -> (new WebClientWithTimeout(milliseconds)) :> WebClient
+            | None ->
+                new WebClient ()
+            | Some(milliseconds) ->
+                (new WebClientWithTimeout(milliseconds)) :> WebClient
         match action with
         | Download(url, data) ->
             let full_url = sprintf "%s?data=%s" url data
