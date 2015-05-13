@@ -116,7 +116,9 @@ let check_if_executable (eventName : EventName) (user: string)
     let event_result = get_event eventName result.state
     match event_result with
     | ReadResult.Ok((event, false)) ->
-        let user_has_permission = not (Set.isEmpty <| Set.intersect roles event.roles)
+        let has_no_roles = Set.isEmpty event.roles
+        let has_common_role = not (Set.isEmpty <| Set.intersect roles event.roles)
+        let user_has_permission = has_no_roles || has_common_role
 
         match event.included, user_has_permission with
         | true, true ->
