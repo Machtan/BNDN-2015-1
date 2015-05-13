@@ -287,6 +287,42 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
         //printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
         env.handle path meth message env.send env.state
 
+    | Request(location, port, url, meth, data) ->
+        let res = env.handle url meth data env.send env.state
+
+        let address = sprintf "%s:%s" location port
+        if address = env.state.node.address then // For this one (handle collect)
+            let COLLECT_SEPARATOR = '\n'
+            let args = split message COLLECT_SEPARATOR
+            let initial_data = args.[0] // initial data
+            let initial_meth = args.[1]
+            let data = args.[2]
+            let status = int args.[3]
+            let new_requests =
+                let request = new_request url initial_meth initial_data
+                match Map.tryFind request res.state.requests with
+                | Some(responses) ->
+                    let respond response =
+                        reply response data status "Ok"
+                    List.iter respond responses
+                    Map.remove request res.state.requests
+                | None ->
+                    printfn "Request '%A' no found!" request
+                    res.state.requests
+            let new_state = {res.state with requests = new_requests;}
+            resource_response new_state "Ok" 200
+        else // Send collect
+            let collect_type = Collect(url)
+            let collect_message = sprintf "%s\n%s\n%s\n%d" data meth res.message res.status
+            match send_message address collect_type collect_message res.state.node.guid None with
+            | HttpResult.Ok(_) ->
+                printfn "Collect result sent!"
+            | HttpResult.Error(resp, status) ->
+                printfn "Error sending collect result!: %d | %s" status resp
+            | HttpResult.ConnectionError(err) ->
+                printfn "Connection error sending collect result!: %s" err
+            resource_response res.state "Ok" 200
+
     | DeadNode -> // Something has died
         printfn "DEAD: Notified that %s has died" (serialize_guid key)
         let dead =
@@ -332,8 +368,8 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
         let new_node = { env.state.node with backup = message; }
         resource_response { env.state with node = new_node;} "Backed up!" 200
 
-    | GetState | Ping ->
-        failwith "GetState and Ping messages are handled elsewhere!"
+    | _ ->
+        failwith "Got message that shouldn't be handled by 'handle_message': %A!" typ
 
 // Routes something using the leaf set of the node
 let rec route_leaf (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: GUID)
@@ -463,8 +499,21 @@ let try_forward_resource<'a> (env: PastryEnv<'a>) (split_res_path: string list)
     | Ok(guid) ->
         // Construct the message function used by the repo to route messages out
         let resource_url = String.concat "/" split_res_path
-        let route_response = route env (Resource(resource_url, meth)) data guid
-        reply response route_response.message route_response.status "Ok"
+        let url = String.concat "/" split_res_path
+        let addr_args = split original_address ':'
+        let location = addr_args.[0]
+        let port = addr_args.[1]
+        let message = Request(location, port, url, meth, data)
+        let request = new_request url meth data
+        let new_responses =
+            match Map.tryFind request env.state.requests with
+            | Some(responses) ->
+                response::responses
+            | None ->
+                [response]
+        let new_requests = Map.add request new_responses env.state.requests
+        let new_env = { env with state = { env.state with requests = new_requests;}}
+        let route_response = route env message data guid
         route_response
     | Error(msg, status, reason) ->
         reply response msg status reason
@@ -537,6 +586,7 @@ let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
         let new_state =
             match parts with
             | "pastry"::"collect"::url ->
+                reply response "Received" 200 "Ok"
                 let COLLECT_SEPARATOR = '\n'
                 let args = split body COLLECT_SEPARATOR
                 let initial_data = args.[0] // initial data

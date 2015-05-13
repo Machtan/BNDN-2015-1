@@ -23,7 +23,7 @@ type MessageType =
 | GetState      // Hey, I need something you have (such as a new leaf)
 | DeadNode      // Someone has died. Find the one who can fix it
 | Request of string * string * string * string * string // location port url meth data
-| Collect of string * string * string * string * int // url meth data resp
+| Collect of string // resp
 
 // A result type for HTTP requests
 type HttpResult =

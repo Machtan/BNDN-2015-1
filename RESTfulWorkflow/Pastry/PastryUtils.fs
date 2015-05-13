@@ -366,10 +366,9 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
                 failwith "Unknown request type gotten: %s" meth
         send_http action timeout
 
-    | Collect(url, meth, data, resp, status) ->
+    | Collect(url) ->
         let return_url = sprintf "http://%s/pastry/collect/%s" address url
-        let return_data = sprintf "%s\n%s\n%s\n%d" data meth resp status
-        let action = Upload(url, "PUT", return_data)
+        let action = Upload(url, "PUT", message)
         send_http action timeout
 
     | _ ->
