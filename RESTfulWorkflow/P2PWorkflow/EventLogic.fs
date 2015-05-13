@@ -361,7 +361,7 @@ let add_relation_to (fromEvent : EventName) (relations : RelationType)
         (state : PastryState<Repository>) : Result =
     let inner (event : Event) : UpdateEventResult =
         EventOk({event with toRelations = Set.add (relations, toEvent) event.toRelations})
-    update_inner_event fromEvent inner result.state
+    update_inner_event fromEvent inner state
 
 /// Adds given relationships (going to given event) to given event and returns the result
 let add_relation_from (fromEvent : EventName) (relations : RelationType)
@@ -430,8 +430,8 @@ let remove_relation_to (fromEvent : EventName) (relations : RelationType)
             let to_relations = Set.remove (relations, toEvent) event.toRelations
             EventOk({event with toRelations = to_relations; })
         else
-            EventErr(MissingRelation(result.state))
-    update_inner_event fromEvent inner result.state
+            EventErr(MissingRelation(state))
+    update_inner_event fromEvent inner state
 
 /// Removes given relation form given event and returns the result
 let remove_relation_from (fromEvent : EventName) (relations : RelationType)

@@ -17,7 +17,8 @@ type CommandType =
 // workflow event included pending executed locked roles
 | CreateEvent of string * string * bool * bool * bool * bool * Set<string>
 // workflow event type workflow event
-| AddRelation of string * string * RelationType * string * string
+| AddToRelation of string * string * RelationType * string * string
+| AddFromRelation of string * string * RelationType * string * string
 | AddEvent of string * string
 | AddLog of string * string * string * string
 
@@ -42,7 +43,7 @@ let get_command (typ: CommandType) : Command =
         let data = initstate + "," + (String.concat "," roles)
         cmd (sprintf "workflow/%s/%s" workflow event) "POST" data
 
-    | AddRelation(workflow, event, reltype, dst_workflow, dst_event) ->
+    | AddToRelation(workflow, event, reltype, dst_workflow, dst_event) ->
         let rel =
             match reltype with
             | Condition -> "condition"
@@ -51,6 +52,17 @@ let get_command (typ: CommandType) : Command =
             | Inclusion -> "inclusion"
         let path = sprintf "workflow/%s/%s/%s/to" workflow event rel
         let data = sprintf "%s,%s" dst_workflow dst_event
+        cmd path "PUT" data
+
+    | AddFromRelation(workflow, event, reltype, dst_workflow, dst_event) ->
+        let rel =
+            match reltype with
+            | Condition -> "condition"
+            | Exclusion -> "exclusion"
+            | Response  -> "response"
+            | Inclusion -> "inclusion"
+        let path = sprintf "workflow/%s/%s/%s/from" dst_workflow dst_event rel
+        let data = sprintf "%s,%s" workflow event
         cmd path "PUT" data
 
     | AddLog(workflow, event, datetime, user) ->
@@ -79,7 +91,9 @@ let get_migratable_commands (predicate: string -> bool)
             if predicate (get_command create_cmd).path then
                 // Fold the relations in their own list (must be added after all events)
                 let relation_folder (rt, (rwf, rev)) ii_rel_cmds =
-                    (AddRelation(workflow, eventname, rt, rwf, rev))::ii_rel_cmds
+                    let to_cmd = AddToRelation(workflow, eventname, rt, rwf, rev)
+                    let from_cmd = AddFromRelation(workflow, eventname, rt, rwf, rev)
+                    from_cmd::to_cmd::ii_rel_cmds
                 wf_events, create_cmd::i_cmds, (Set.foldBack relation_folder state.toRelations i_rel_cmds)
             else
                 (Map.add eventname (locked, state) wf_events), i_cmds, i_rel_cmds
