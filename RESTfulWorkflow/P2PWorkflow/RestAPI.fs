@@ -446,17 +446,23 @@ let handle_full_migration (meth: string) (data: string)
 
 // Handles the migration of resources on this repository that are closer to
 // a newly-joined node
-let handle_partial_migration (meth: string) (from_guid: string) (to_guid: string)
-        (send_func: SendFunc<Repository>) (state: PastryState<Repository>)
+let handle_partial_migration (meth: string) (this_nodes_guid: string)
+        (new_nodes_guid: string) (send_func: SendFunc<Repository>)
+        (state: PastryState<Repository>)
         : ResourceResponse<Repository> =
     match meth with
     | "PUT" ->
-        let should_migrate path = belongs_on_other from_guid path to_guid
+        print_header "Starting partial migration!"
+        let should_migrate path =
+            let res = belongs_on_other this_nodes_guid path new_nodes_guid
+            printfn "Should migrate %s from %s to %s? -> %A" path this_nodes_guid new_nodes_guid res
+            res
         let (new_state, cmds) = get_migratable_commands should_migrate state
         let migrate new_state cmd =
             let result = send_func cmd.path cmd.meth cmd.data new_state
             result.state
         let final_state = List.fold migrate new_state cmds
+        print_header "Finished migrating!"
         resource_response final_state "Migrated!" 200
 
     | _ ->
@@ -587,8 +593,8 @@ let handle_resource (path: string) (meth: string) (message: string)
     | "migrate"::[] ->
         handle_full_migration meth message send_func state
 
-    | "migrate"::from_guid::to_guid::[] ->
-        handle_partial_migration meth from_guid to_guid send_func state
+    | "migrate"::this_nodes_guid::new_nodes_guid::[] ->
+        handle_partial_migration meth this_nodes_guid new_nodes_guid send_func state
 
     | "log"::workflow::event::[] ->
         printfn "REST: Logging event..."

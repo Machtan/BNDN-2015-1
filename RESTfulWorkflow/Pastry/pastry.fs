@@ -68,7 +68,7 @@ let belongs_on_other (self_guid: string) (resource: string) (other_guid: string)
     let path = split resource '/'
     match get_destination path with
     | Ok(guid) ->
-        distance self guid < distance other guid
+        distance other guid < distance self guid
     | Error(_) ->
         failwith "Bad resource url: '%s'" resource
 
@@ -245,7 +245,7 @@ let update_node<'a> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
 // Handles a message intended for this node
 let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
         (key: GUID) (route_func: RouteFunc<'a>) : ResourceResponse<'a> =
-    if not (typ = Backup) then
+    if not (typ = Backup || typ = JoinState) then
         printfn "HANDLE: | Handling '%A' | '%s'" typ message
     //printfn "HANDLE: | '%s'" message
     match typ with
