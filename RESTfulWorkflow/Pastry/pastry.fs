@@ -245,7 +245,8 @@ let update_node<'a> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
 // Handles a message intended for this node
 let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
         (key: GUID) (route_func: RouteFunc<'a>) : ResourceResponse<'a> =
-    printfn "HANDLE: | Handling '%A'" typ
+    if not (typ = Backup) then
+        printfn "HANDLE: | Handling '%A' | '%s'" typ message
     //printfn "HANDLE: | '%s'" message
     match typ with
     | Join -> // A node is requesting to join, and this is the one with the nearest GUID

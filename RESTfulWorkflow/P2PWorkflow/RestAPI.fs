@@ -415,6 +415,14 @@ let handle_relation (event: EventName) (reltype: string)
             let msg = sprintf "Invalid connection '%s' should be 'to' or 'from'" con_str
             resource_response state msg 400
 
+// Prints this stuff in a very recognizable way
+let print_header (msg: string) =
+    printfn ""
+    printfn "%s" (String.replicate 50 "=")
+    printfn "%s" msg
+    printfn "%s" (String.replicate 50 "=")
+    printfn ""
+
 // Handles a full migration (a node has died, and is being remade)
 let handle_full_migration (meth: string) (data: string)
         (send_func: SendFunc<Repository>) (state: PastryState<Repository>)
@@ -424,14 +432,14 @@ let handle_full_migration (meth: string) (data: string)
     else
         match meth with
         | "PUT" ->
-            printfn ">>> Migrating........"
+            print_header "Starting migration!"
             let dead_repo = JsonConvert.DeserializeObject<Repository> data
             let cmds = get_all_migration_commands { state with data = dead_repo; }
-            let migrate cmd new_state =
+            let migrate new_state cmd =
                 let result = send_func cmd.path cmd.meth cmd.data new_state
                 result.state
             let new_state = List.fold migrate state cmds
-            printfn ">>> Finished migrating!"
+            print_header "Finished migrating!"
             resource_response new_state "Migrated!" 200
         | _ ->
             resource_response state "Bad method used: migrate requires PUT!" 400
@@ -445,7 +453,7 @@ let handle_partial_migration (meth: string) (from_guid: string) (to_guid: string
     | "PUT" ->
         let should_migrate path = belongs_on_other from_guid path to_guid
         let (new_state, cmds) = get_migratable_commands should_migrate state
-        let migrate cmd new_state =
+        let migrate new_state cmd =
             let result = send_func cmd.path cmd.meth cmd.data new_state
             result.state
         let final_state = List.fold migrate new_state cmds
@@ -513,7 +521,25 @@ let debug_state (workflow: string) (state: PastryState<Repository>)
         workflow_line::new_lines
     let event_lines = Map.foldBack event_folder state.data.events []
 
-    let result = String.concat "\n" event_lines
+    let workflow_folder (name: string) (workflow: Workflow) lines =
+        let name_folder (eventname: string) lines =
+            (sprintf "- '%s'" eventname)::lines
+        let title_line = sprintf "\nWorkflow events [ %s ]:" name
+        let event_list_lines =
+            if not (workflow.events = []) then
+                title_line::(List.foldBack name_folder workflow.events lines)
+            else
+                title_line::"<No events in the list>"::lines
+        let log_lines =
+            if not (workflow.logs = []) then
+                "Logs:\n"::workflow.logs
+            else
+                ["Logs:\n<No logs in the list>"]
+        List.append event_list_lines log_lines
+    let workflow_lines = Map.foldBack workflow_folder state.data.workflows []
+    let all_lines = List.append workflow_lines event_lines
+
+    let result = String.concat "\n" all_lines
     resource_response state result 200
 
 // The actual resource handling function

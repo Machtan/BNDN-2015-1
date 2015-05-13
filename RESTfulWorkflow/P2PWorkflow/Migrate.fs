@@ -2,6 +2,7 @@ module Migrate
 
 open Repository_types
 open Pastry
+open System
 
 type Command = {
     path: string;
@@ -18,6 +19,7 @@ type CommandType =
 // workflow event type workflow event
 | AddRelation of string * string * RelationType * string * string
 | AddEvent of string * string
+| AddLog of string * string * string * string
 
 let cmd path meth data : Command =
     { path = path; meth = meth; data = data; }
@@ -49,6 +51,11 @@ let get_command (typ: CommandType) : Command =
             | Inclusion -> "inclusion"
         let path = sprintf "workflow/%s/%s/%s/to" workflow event rel
         let data = sprintf "%s,%s" dst_workflow dst_event
+        cmd path "PUT" data
+
+    | AddLog(workflow, event, datetime, user) ->
+        let data = sprintf "%s,%s" datetime user
+        let path = sprintf "log/%s/%s" workflow event
         cmd path "PUT" data
 
     | AddEvent(workflow, event) ->
@@ -90,10 +97,21 @@ let get_migratable_commands (predicate: string -> bool)
     let workflow_folder (name: string) (workflow: Workflow) (updated_workflows, cmds) =
         let typ = CreateWorkflow(name)
         if predicate (get_command typ).path then
-            let folder (event: string) event_cmds =
+
+            let log_folder (log: string) cmds =
+                let args = log.Split([|", "|], StringSplitOptions.None)
+                let event = args.[0]
+                let datetime = args.[1]
+                let user = args.[2]
+                let cmd = AddLog(name, event, datetime, user)
+                cmd::cmds
+            let log_commands = List.foldBack log_folder workflow.logs cmds
+
+            let event_folder (event: string) event_cmds =
                 let cmd = AddEvent(name, event)
                 cmd::event_cmds
-            let updated_commands = List.foldBack folder workflow.events (typ::cmds)
+            let updated_commands = typ::(List.foldBack event_folder workflow.events log_commands)
+
             updated_workflows, updated_commands
         else
             Map.add name workflow updated_workflows, cmds
@@ -108,8 +126,8 @@ let get_migratable_commands (predicate: string -> bool)
         let create_cmd = CreateUser(name)
 
         if predicate (get_command create_cmd).path then // Should migrate user
-            let updated_commands = Map.foldBack role_folder user.roles (create_cmd::cmds)
-            users, updated_commands
+            let updated_commands = Map.foldBack role_folder user.roles cmds
+            users, create_cmd::updated_commands
         else
             (Map.add name user users), cmds
     let (users, all_cmds) =
