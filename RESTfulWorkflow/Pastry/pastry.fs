@@ -172,7 +172,7 @@ let migrate_dead_leaf<'a> (env: PastryEnv<'a>) (neighbor: GUID): PastryState<'a>
 let handle_dead_leaf<'a> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFunc<'a>)
         : PastryState<'a> =
     printfn "DEAD: Removing dead leaf %s from leaf set" (serialize_guid leaf)
-    let leaves = Map.remove leaf env.state.node.leaves
+    let node_with_leaves = remove_leaf env.state.node leaf
     // Find out what to do with the death
     let watched = find_watched_neighbor env.state.node
     //printfn "%s" <| String.replicate 50 "="
@@ -180,7 +180,6 @@ let handle_dead_leaf<'a> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFun
     //printfn "min, max, leaves: %s | %s | %A" (string node.minleaf) (string node.maxleaf) node.leaves
     //printfn "%s" <| String.replicate 50 "="
 
-    let node_with_leaves = { env.state.node with leaves = leaves; }
     let new_env =
         // This node is supposed to handle it
         let new_env = { env with state = { env.state with node = node_with_leaves;}}

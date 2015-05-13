@@ -275,7 +275,9 @@ let try_add_leaf (node: Node) (guid: GUID) (address: NetworkLocation) : Node =
 // Safely removes a leaf and updates the min/max parts
 let remove_leaf (node: Node) (leaf: GUID) : Node =
     let leaves = Map.remove leaf node.leaves
-    if leaves.Count < MAX_LEAVES then // Room for more
+    if leaves.Count = 0 then
+        { node with leaves = leaves; minleaf = node.guid; maxleaf = node.guid; }
+    else if leaves.Count < MAX_LEAVES then // Room for more
         // Find the index of the sorted list of keys that is bigger than the
         // node's guid
         let sorted_leaves = Map.toList leaves |> List.map (fun (k,_) -> k) |> List.sort
