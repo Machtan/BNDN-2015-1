@@ -28,6 +28,7 @@ type MessageType =
 type HttpResult =
 | Ok of string
 | Error of string * int
+| ConnectionError of string
 
 // An argument type for HTTP requests
 type HttpAction =

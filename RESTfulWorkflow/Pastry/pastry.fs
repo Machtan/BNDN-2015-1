@@ -95,6 +95,8 @@ let send_backup_state (node: Node) (state_msg: string) =
         match send_message address Backup state_msg neighbor <| Some(100) with
         | HttpResult.Ok(msg) ->
             printfn "BACKUP: Backed up succesfully! (%s)" msg
+        | HttpResult.ConnectionError(msg) ->
+            printfn "BACKUP: Connection Error: %s" msg
         | HttpResult.Error(msg, status) ->
             printfn "BACKUP: No reply for backup: Handle node failure? (%d %s)" status msg
 
@@ -151,8 +153,10 @@ let handle_join (node: Node) (message: string): Node =
         match send_message address Update (serialize updated_node) guid None with
         | HttpResult.Ok(_) ->
             ()
+        | HttpResult.ConnectionError(msg) ->
+            printfn "JOIN: Could not connect to %s when notifying of join: %s" (string guid) msg
         | HttpResult.Error(msg, status) ->
-            printfn "JOIN: Failed to notify %A at '%s' of update: %d %s" guid address status msg
+            printfn "JOIN: Failed to notify %s at '%s' of update: %d %s" (string guid) address status msg
     Map.iter notify updated_node.leaves
     //Map.iter notify updated_node.neighbors // We don't remove these properly, so...
     List.iter (fun map_level -> Map.iter notify map_level) updated_node.routing_table
@@ -249,12 +253,14 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
         let firstsep = message.IndexOf(SEPARATOR)
         let address = message.[..firstsep-1]
         let states = message.[firstsep + SEPARATOR.Length..]
-        // Failure is unimportant here, no?
         match send_message address JoinState states key None with
         | HttpResult.Ok(message) ->
             printfn "Node %s sent of sates succesfully" (serialize_guid key)
         | HttpResult.Error(message, status) ->
             printfn "Error for %s when sending join state batch: %d | %s" (serialize_guid key) status message
+        | HttpResult.ConnectionError(msg) ->
+            printfn "Connection error for the newly joined node %s: %s" (string key) msg
+
         resource_response env.state "" 200
 
     | JoinState -> // This node receives the states needed to initialize itself
@@ -331,8 +337,10 @@ let rec route_leaf (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: G
         match send_message address typ msg key None with // No timeout here :u
         | HttpResult.Ok(message) ->
             resource_response env.state message 200
-        | HttpResult.Error(msg, status) -> // HERE BE POSSIBLE DEADLOCKS (yay)
-            printfn "ROUTE LEAF: Could not send a message to %s: %d %s" (serialize_guid key) status msg
+        | HttpResult.Error(message, status) ->
+            resource_response env.state message status
+        | HttpResult.ConnectionError(msg) -> // HERE BE POSSIBLE DEADLOCKS (yay)
+            printfn "ROUTE LEAF: Could not send a message to %s: %s" (string key) msg
             // Fix the leaf
             let new_state = handle_dead_leaf env closest route_func
             let new_env = { env with state = new_state; }
@@ -469,8 +477,11 @@ let ping_neighbor<'a> (env: PastryEnv<'a>) : PastryState<'a> =
         match send_message address Ping "" neighbor None with
         | HttpResult.Ok(_) ->
             env.state
-        | HttpResult.Error(message, status) ->
-            printfn "PING: Neighbor is dead, do something! (%d %s)" status message
+        | HttpResult.Error(msg, status) ->
+            printfn "PING: why did it return an error? %d | %s" status msg
+            env.state
+        | HttpResult.ConnectionError(message) ->
+            printfn "PING: Neighbor is dead, do something!: %s" message
             handle_dead_leaf env neighbor route
 
 // Makes the given pastry node start listening...
@@ -568,8 +579,10 @@ let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (pe
         start_listening<'a> env
     | Some(peer) ->
         match send_message peer Join address guid None with
+        | HttpResult.ConnectionError(msg) ->
+            error <| sprintf "Could not establish a connection with peer at '%s': %s" peer msg
         | HttpResult.Error(msg, status) ->
-            error <| sprintf "Could not establish a connection with peer at '%s' (%d %s)" peer status msg
+            error <| sprintf "Got an error from peer at '%s': %d | %s" peer status msg
         | HttpResult.Ok(_) ->
             start_listening<'a> env
 

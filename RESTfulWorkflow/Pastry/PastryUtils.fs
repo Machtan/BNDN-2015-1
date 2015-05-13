@@ -330,9 +330,9 @@ let send_http (action: HttpAction) (timeout: int option): HttpResult =
             //printfn "Web error: %d | %s" status message
             HttpResult.Error(message, status)
         | _ ->
-            HttpResult.Error(sprintf "Connection error: %A" error, 400)
+            HttpResult.ConnectionError(sprintf "Connection error: %A" error)
     | error ->
-        HttpResult.Error(sprintf "Connection error: %A" error, 400)
+        HttpResult.ConnectionError(sprintf "Connection error: %A" error)
 
 // Sends a pastry message to a node at an address, that a type of message must
 // be forwarded towards a pastry node, carrying some data
