@@ -9,6 +9,7 @@ open Newtonsoft.Json
 open System.Text
 
 open PastryTypes
+open NewWebClient
 
 // ============= CONFIG ================
 let DIGIT_POWER = 4 // 2^b-1 per row in the routing table
@@ -190,19 +191,6 @@ let hash (ip_address: NetworkLocation): GUID =
     //printfn "Hash : a / b : %d / %d" a b
     (bigint a) * (bigint UInt64.MaxValue) + (bigint b)
 
-// Adapted from https://stackoverflow.com/questions/1069103/how-to-get-my-own-ip-address-in-c
-let get_public_ip () =
-    let request: WebRequest = WebRequest.Create("http://checkip.dyndns.org/")
-    use response: WebResponse = request.GetResponse()
-    use stream: StreamReader = new StreamReader(response.GetResponseStream())
-    let direction = stream.ReadToEnd()
-
-    //Search for the ip in the html
-    let first = direction.IndexOf("Address: ") + 9
-    let last = direction.LastIndexOf("</body>")
-
-    direction.Substring(first, last - first)
-
 // Finds the leaf that is to the left of this node
 let find_left_leaf (node: Node) : GUID =
     let closer_than k acc =
@@ -313,9 +301,12 @@ let remove_leaf (node: Node) (leaf: GUID) : Node =
 
 
 // Sends a HTTP message using the given HTTP action argument type
-let send_http (action: HttpAction) : HttpResult =
+let send_http (action: HttpAction) (timeout: int option): HttpResult =
     try
-        use w = new System.Net.WebClient ()
+        use w: WebClient =
+            match timeout with
+            | None -> new WebClient ()
+            | Some(milliseconds) -> (new WebClientWithTimeout(milliseconds)) :> WebClient
         match action with
         | Download(url, data) ->
             let full_url = sprintf "%s?data=%s" url data
@@ -344,12 +335,11 @@ let send_http (action: HttpAction) : HttpResult =
 // Sends a pastry message to a node at an address, that a type of message must
 // be forwarded towards a pastry node, carrying some data
 let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
-        (destination: GUID) : HttpResult =
+        (destination: GUID) (timeout: int option): HttpResult =
     match typ with
     | Resource(path, meth) ->
         let url = sprintf "http://%s/resource/%s" address path
         printfn "SEND: %s %s => %s" meth url message
-        use w = new System.Net.WebClient ()
         let action =
             match meth with
             | "GET" ->
@@ -358,7 +348,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
                 Upload(url, meth, message)
             | _ ->
                 failwith "ASSERTION FAILED: Got unknown HTTP method in pastry send_message!"
-        send_http action
+        send_http action timeout
     | _ ->
         let cmd =
             match typ with
@@ -372,7 +362,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
             | Resource(_)   -> failwith "Got past a match on 'Resource'"
         let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
         printfn "SEND: %s => %s" url message
-        send_http <| Upload(url, "PUT", message)
+        send_http <| Upload(url, "PUT", message) <| timeout
 
 // Returns the destination of a given split resource url (after the /resources/ part)
 let get_destination (resource_url: string list): Destination =

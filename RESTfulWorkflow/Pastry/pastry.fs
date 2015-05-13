@@ -92,7 +92,7 @@ let send_backup_state (node: Node) (state_msg: string) =
                 addr
             | None ->
                 failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
-        match send_message address Backup state_msg neighbor with
+        match send_message address Backup state_msg neighbor <| Some(100) with
         | HttpResult.Ok(msg) ->
             printfn "BACKUP: Backed up succesfully! (%s)" msg
         | HttpResult.Error(msg, status) ->
@@ -148,7 +148,7 @@ let handle_join (node: Node) (message: string): Node =
             maxleaf = maxleaf;
         }
     let notify guid address =
-        match send_message address Update (serialize updated_node) guid with
+        match send_message address Update (serialize updated_node) guid None with
         | HttpResult.Ok(_) ->
             ()
         | HttpResult.Error(msg, status) ->
@@ -324,7 +324,7 @@ let rec route_leaf (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: G
         handle_message env typ msg key route_func
     else
         let address = Map.find closest env.state.node.leaves
-        match send_message address typ msg key with
+        match send_message address typ msg key None with // No timeout here :u
         | HttpResult.Ok(message) ->
             resource_response env.state message 200
         | HttpResult.Error(msg, status) -> // HERE BE POSSIBLE DEADLOCKS (yay)
@@ -462,7 +462,7 @@ let ping_neighbor<'a> (env: PastryEnv<'a>) : PastryState<'a> =
                 addr
             | None ->
                 failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
-        match send_message address Ping "" neighbor with
+        match send_message address Ping "" neighbor None with
         | HttpResult.Ok(_) ->
             env.state
         | HttpResult.Error(message, status) ->
@@ -563,7 +563,7 @@ let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (pe
     | None ->
         start_listening<'a> env
     | Some(peer) ->
-        match send_message peer Join address guid with
+        match send_message peer Join address guid None with
         | HttpResult.Error(msg, status) ->
             error <| sprintf "Could not establish a connection with peer at '%s' (%d %s)" peer status msg
         | HttpResult.Ok(_) ->
