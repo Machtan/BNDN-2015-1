@@ -90,11 +90,17 @@ let get_migratable_commands (predicate: string -> bool)
             let create_cmd = CreateEvent(workflow, eventname, state.included, state.pending, state.executed, locked, state.roles)
             if predicate (get_command create_cmd).path then
                 // Fold the relations in their own list (must be added after all events)
-                let relation_folder (rt, (rwf, rev)) ii_rel_cmds =
-                    let to_cmd = AddToRelation(workflow, eventname, rt, rwf, rev)
-                    let from_cmd = AddFromRelation(workflow, eventname, rt, rwf, rev)
-                    from_cmd::to_cmd::ii_rel_cmds
-                wf_events, create_cmd::i_cmds, (Set.foldBack relation_folder state.toRelations i_rel_cmds)
+                let to_relation_folder (typ, (rel_workflow, rel_event)) ii_rel_cmds =
+                    let to_cmd = AddToRelation(workflow, eventname, typ, rel_workflow, rel_event)
+                    to_cmd::ii_rel_cmds
+                let to_cmds = Set.foldBack to_relation_folder state.toRelations i_rel_cmds
+
+                let from_relation_folder (typ, (rel_workflow, rel_event)) ii_rel_cmds =
+                    let from_cmd = AddFromRelation(rel_workflow, rel_event, typ, workflow, eventname)
+                    from_cmd::ii_rel_cmds
+                let all_rel_cmds = Set.foldBack from_relation_folder state.fromRelations to_cmds
+
+                wf_events, create_cmd::i_cmds, all_rel_cmds
             else
                 (Map.add eventname (locked, state) wf_events), i_cmds, i_rel_cmds
         let wf_events, i_cmds, i_rel_cmds = Map.foldBack content_folder events (Map.empty, cmds, rel_cmds)
