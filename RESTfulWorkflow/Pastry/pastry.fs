@@ -104,7 +104,7 @@ let send_backup_state (node: Node) (state_msg: string) =
                 addr
             | None ->
                 failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
-        match send_message address Backup state_msg neighbor <| Some(100) with
+        match send_message address Backup state_msg neighbor <| true with
         | HttpResult.Ok(msg) ->
             printfn "BACKUP: Backed up succesfully! (%s)" msg
         | HttpResult.ConnectionError(msg) ->
@@ -162,7 +162,7 @@ let handle_join (node: Node) (message: string): Node =
             maxleaf = maxleaf;
         }
     let notify guid address =
-        match send_message address Update (serialize updated_node) guid None with
+        match send_message address Update (serialize updated_node) guid false with
         | HttpResult.Ok(_) ->
             ()
         | HttpResult.ConnectionError(msg) ->
@@ -269,10 +269,11 @@ let handle_message<'a when 'a : equality> (env: PastryEnv<'a>) (typ: MessageType
     //printfn "HANDLE: | '%s'" message
     match typ with
     | Join -> // A node is requesting to join, and this is the one with the nearest GUID
+        System.Threading.Thread.Sleep(10)
         let firstsep = message.IndexOf(SEPARATOR)
         let address = message.[..firstsep-1]
         let states = message.[firstsep + SEPARATOR.Length..]
-        match send_message address JoinState states key None with
+        match send_message address JoinState states key false with
         | HttpResult.Ok(message) ->
             printfn "Node %s sent of sates succesfully" (serialize_guid key)
         | HttpResult.Error(message, status) ->
@@ -328,7 +329,7 @@ let handle_message<'a when 'a : equality> (env: PastryEnv<'a>) (typ: MessageType
             printfn "Sending collect of %A..." typ
             let collect_type = Collect(url)
             let collect_message = sprintf "%s\n%s\n%s\n%d" data meth res.message res.status
-            match send_message address collect_type collect_message res.state.node.guid None with
+            match send_message address collect_type collect_message res.state.node.guid false with
             | HttpResult.Ok(_) ->
                 printfn "Collect result sent!"
             | HttpResult.Error(resp, status) ->
@@ -401,7 +402,7 @@ let rec route_leaf (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: G
         handle_message env typ msg key route_func
     else
         let address = Map.find closest env.state.node.leaves
-        match send_message address typ msg key None with // No timeout here :u
+        match send_message address typ msg key false with // No timeout here :u
         | HttpResult.Ok(message) ->
             resource_response env.state message 200
         | HttpResult.Error(message, status) ->
@@ -424,6 +425,7 @@ let rec route<'a when 'a : equality> (env: PastryEnv<'a>) (typ: MessageType) (ms
         | Join ->
             // NOTE NOTE NOTE ------- remove later!
             // Simulate some latency on localhost
+            System.Threading.Thread.Sleep(10)
 
             // If there is an old version in the leaf set
             let new_state =
@@ -551,7 +553,7 @@ let ping_neighbor<'a when 'a : equality> (env: PastryEnv<'a>) : PastryState<'a> 
                 addr
             | None ->
                 failwith "ASSERTION FAILED: Smallest key not found in leaves... WTF!"
-        match send_message address Ping "" neighbor None with
+        match send_message address Ping "" neighbor false with
         | HttpResult.Ok(_) ->
             env.state
         | HttpResult.Error(msg, status) ->
@@ -692,7 +694,7 @@ let start_server_fixed_guid<'a when 'a: equality> (address: NetworkLocation) (pe
     | None ->
         start_listening<'a> env
     | Some(peer) ->
-        match send_message peer Join address guid None with
+        match send_message peer Join address guid false with
         | HttpResult.ConnectionError(msg) ->
             error <| sprintf "Could not establish a connection with peer at '%s': %s" peer msg
         | HttpResult.Error(msg, status) ->

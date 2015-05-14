@@ -44,17 +44,18 @@ let print_actions (actions: (string * string * 'a) list) (state: State) =
         printfn "- %s: %s" identifier desc
     List.iter print_action actions
 
+let normal_client: WebClient = new WebClient ()
+
 // Does some http stuff (like error handling)
 let send_http (action: HttpAction) : HttpResult =
     System.Threading.Thread.Sleep(5) // Don't overload localhost
     try
-        use w = new System.Net.WebClient ()
         match action with
         | Download(url, data) ->
             let full_url = sprintf "%s?data=%s" url data
-            Ok(w.DownloadString(full_url))
+            Ok(normal_client.DownloadString(full_url))
         | Upload(url, meth, data) ->
-            Ok(w.UploadString(url, meth, data))
+            Ok(normal_client.UploadString(url, meth, data))
     with
     | :? WebException as error ->
         //printfn "Got exception: %A" error

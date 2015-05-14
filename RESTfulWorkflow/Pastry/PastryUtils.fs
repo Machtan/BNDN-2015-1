@@ -302,21 +302,23 @@ let remove_leaf (node: Node) (leaf: GUID) : Node =
         { node with leaves = leaves; }
 
 
+let normal_client: WebClient = new WebClient ()
+let timeout_client: WebClient = (new WebClientWithTimeout(100)) :> WebClient
+
+
 // Sends a HTTP message using the given HTTP action argument type
-let send_http (action: HttpAction) (timeout: int option): HttpResult =
+let send_http (action: HttpAction) (use_timeout: bool): HttpResult =
     try
-        use w: WebClient =
-            match timeout with
-            | None ->
-                new WebClient ()
-            | Some(milliseconds) ->
-                (new WebClientWithTimeout(milliseconds)) :> WebClient
+        let client: WebClient =
+            if use_timeout then timeout_client
+            else normal_client
+
         match action with
         | Download(url, data) ->
             let full_url = sprintf "%s?data=%s" url data
-            HttpResult.Ok(w.DownloadString(full_url))
+            HttpResult.Ok(client.DownloadString(full_url))
         | Upload(url, meth, data) ->
-            HttpResult.Ok(w.UploadString(url, meth, data))
+            HttpResult.Ok(client.UploadString(url, meth, data))
     with
     | :? WebException as error ->
         //printfn "Got exception: %A" error
@@ -339,7 +341,7 @@ let send_http (action: HttpAction) (timeout: int option): HttpResult =
 // Sends a pastry message to a node at an address, that a type of message must
 // be forwarded towards a pastry node, carrying some data
 let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
-        (destination: GUID) (timeout: int option): HttpResult =
+        (destination: GUID) (use_timeout: bool): HttpResult =
     // Sleep a little. This might prevent too fast local communication
     System.Threading.Thread.Sleep(10)
     match typ with
@@ -354,7 +356,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
                 Upload(url, meth, message)
             | _ ->
                 failwith "ASSERTION FAILED: Got unknown HTTP method in pastry send_message!"
-        send_http action timeout
+        send_http action use_timeout
 
     | Request(location, port, url, meth, data) ->
         let url = sprintf "http://%s/pastry/request/%s/%s/%s" address location port url
@@ -366,12 +368,12 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
                 Upload(url, meth, data)
             | _ ->
                 failwith "Unknown request type gotten: %s" meth
-        send_http action timeout
+        send_http action use_timeout
 
     | Collect(url) ->
         let return_url = sprintf "http://%s/pastry/collect/%s" address url
         let action = Upload(return_url, "PUT", message)
-        send_http action timeout
+        send_http action use_timeout
 
     | _ ->
         let cmd =
@@ -387,7 +389,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
         let url = sprintf "http://%s/pastry/%s/%s" address cmd (serialize_guid destination)
         if not (typ = Backup) then
             printfn "SEND: %s => %s" url message
-        send_http <| Upload(url, "PUT", message) <| timeout
+        send_http <| Upload(url, "PUT", message) <| use_timeout
 
 // Returns the destination of a given split resource url (after the /resources/ part)
 let get_destination (resource_url: string list): Destination =
