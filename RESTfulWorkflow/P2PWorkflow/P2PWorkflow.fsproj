@@ -57,15 +57,16 @@
     <Compile Include="EventLogic.fsi" />
     <Compile Include="EventLogic.fs" />
     <Compile Include="WorkflowLogic.fsi" />
-    <Compile Include="UserLogic.fsi" />
-    <None Include="App.config" />
-    <Compile Include="WorkflowOld.fs" />
-    <Compile Include="RestAPI.fsi" />
     <Compile Include="WorkflowLogic.fs" />
+    <Compile Include="UserLogic.fsi" />
     <Compile Include="UserLogic.fs" />
+    <Compile Include="Migrate.fsi" />
+    <Compile Include="Migrate.fs" />
+    <Compile Include="RestAPI.fsi" />
     <Compile Include="RestAPI.fs" />
-    <None Include="packages.config" />
     <Compile Include="Program.fs" />
+    <None Include="packages.config" />
+    <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Pastry\Pastry.fsproj">

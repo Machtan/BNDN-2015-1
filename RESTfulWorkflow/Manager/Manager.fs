@@ -147,15 +147,6 @@ let rec promptParseFile fileMap =
 
 let Start =
 
-    #if TARGET_MAC
-    #else
-    //Starts the server form the .exe fil server from same placement as the program.
-    let p = new System.Diagnostics.Process()
-    p.StartInfo.FileName <- "event.exe"
-    p.StartInfo.Arguments <- (serverName + " " + port)
-    p.Start() |> ignore
-    #endif
-
     //Find a list of alle available txt files
     let dir = new DirectoryInfo(Directory.GetCurrentDirectory())
     let files = dir.GetFiles("*.txt")
