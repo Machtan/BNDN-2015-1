@@ -27,14 +27,14 @@ let new_request (url: string) (meth: string) (data: string) : Request =
     { url = url; meth = meth; data = data; }
 
 // The main state of pastry
-type PastryState<'a> = {
+type PastryState<'a when 'a : equality> = {
     node: Node; // Because nodes change during routing
     data: 'a;   // The data of the application
     requests: Map<Request, HttpListenerResponse list>;
 }
 
 // Updated state, response, status code
-type ResourceResponse<'a> = {
+type ResourceResponse<'a when 'a : equality> = {
     state: PastryState<'a>
     message: string;    // Http response string
     status: int;        // Http status code
@@ -42,18 +42,18 @@ type ResourceResponse<'a> = {
 
 // A function for the resource request func to send requests through
 // partial_resource_url, method, data, state -> response
-type SendFunc<'a> = string -> string -> string -> PastryState<'a> -> ResourceResponse<'a>
+type SendFunc<'a when 'a : equality> = string -> string -> string -> PastryState<'a> -> ResourceResponse<'a>
 
 // A function to handle resource requests
 // url, method, data, send_func, state -> response
-type ResourceRequestFunc<'a> = string -> string -> string -> SendFunc<'a> -> PastryState<'a> -> ResourceResponse<'a>
+type ResourceRequestFunc<'a when 'a : equality> = string -> string -> string -> SendFunc<'a> -> PastryState<'a> -> ResourceResponse<'a>
 
 // A function to serialize the state passed through pastry
-type SerializeFunc<'a> = 'a -> string
+type SerializeFunc<'a when 'a : equality> = 'a -> string
 
 // A record used for passing the current application environment easily through
 // functions
-type PastryEnv<'a> = {
+type PastryEnv<'a when 'a : equality> = {
     send: SendFunc<'a>;
     handle: ResourceRequestFunc<'a>;
     serialize: SerializeFunc<'a>;
@@ -61,12 +61,12 @@ type PastryEnv<'a> = {
 }
 
 // I need this for circular references /o/
-type RouteFunc<'a> = PastryEnv<'a> -> MessageType -> string -> GUID -> ResourceResponse<'a>
+type RouteFunc<'a when 'a : equality> = PastryEnv<'a> -> MessageType -> string -> GUID -> ResourceResponse<'a>
 
 // ====================================================
 
 // A simple constructor for resource responses
-let resource_response<'a> (state: PastryState<'a>) (message: string)
+let resource_response<'a when 'a : equality> (state: PastryState<'a>) (message: string)
         (status: int) : ResourceResponse<'a> =
     { state = state; message = message; status = status; }
 
@@ -85,6 +85,7 @@ let belongs_on_other (self_guid: string) (resource: string) (other_guid: string)
 
 // Sends a backup state to the nodes that are watching this node
 let send_backup_state (node: Node) (state_msg: string) =
+    printfn "BACKUP: Backing up..."
     let closer_than k acc =
         distance k node.guid < distance acc node.guid
 
@@ -175,12 +176,12 @@ let handle_join (node: Node) (message: string): Node =
     updated_node
 
 // Handles that the node closest to this on the 'bigger' side has died
-let migrate_dead_leaf<'a> (env: PastryEnv<'a>) (neighbor: GUID): PastryState<'a> =
+let migrate_dead_leaf<'a when 'a : equality> (env: PastryEnv<'a>) (neighbor: GUID): PastryState<'a> =
     let response = env.handle "migrate" "PUT" env.state.node.backup env.send env.state
     response.state
 
 // Handles that a node in the leaf set has failed
-let handle_dead_leaf<'a> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFunc<'a>)
+let handle_dead_leaf<'a when 'a : equality> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFunc<'a>)
         : PastryState<'a> =
     printfn "DEAD: Removing dead leaf %s from leaf set" (serialize_guid leaf)
     let node_with_leaves = remove_leaf env.state.node leaf
@@ -197,7 +198,8 @@ let handle_dead_leaf<'a> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFun
         if leaf = watched then // IMPORTANT original node
             { new_env with state = migrate_dead_leaf new_env leaf; }
         else // Send it elsewhere. Update the node in case other leaves have failed
-            let response = route_func new_env DeadNode (serialize_guid leaf) leaf
+            let data = sprintf "%s,%s" (serialize_guid env.state.node.guid) (serialize_guid leaf)
+            let response = route_func new_env DeadNode data  leaf
             { new_env with state = response.state; }
 
     // Find the node that might have a replacement leaf
@@ -239,7 +241,7 @@ let handle_dead_leaf<'a> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFun
             new_env.state
 
 // Updates this node based on a new node that is joining the network
-let update_node<'a> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
+let update_node<'a when 'a : equality> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
     let node_with_leaves = try_add_leaf env.state.node new_node.guid new_node.address
     //try_add_neighbor updated_leaves new_node.guid new_node.address
 
@@ -258,8 +260,9 @@ let update_node<'a> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
         { env.state with node = node_with_leaves; }
 
 // Handles a message intended for this node
-let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
-        (key: GUID) (route_func: RouteFunc<'a>) : ResourceResponse<'a> =
+let handle_message<'a when 'a : equality> (env: PastryEnv<'a>) (typ: MessageType)
+        (message: string) (key: GUID) (route_func: RouteFunc<'a>)
+        : ResourceResponse<'a> =
     if not (typ = Backup || typ = JoinState) then
         printfn "HANDLE: | Handling '%A' | '%s'" typ message
     //printfn "HANDLE: | '%s'" message
@@ -289,10 +292,20 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
 
     | Resource(path, meth) -> // Request for a resource here
         //printfn "PASTRY: Requesting resource at '%s' using '%s'" path meth
-        env.handle path meth message env.send env.state
+        let res = env.handle path meth message env.send env.state
+        if not (res.state.data = env.state.data) then // WOW THIS IS UGLY PLEASE MAKE IT STOP!
+            send_backup_state res.state.node <| env.serialize res.state.data
+        else
+            printfn "handle_message(Resource) : State not updated, not backing up..."
+        resource_response res.state "Ok" 200
 
     | Request(location, port, url, meth, data) ->
         let res = env.handle url meth data env.send env.state
+        // BACKUP
+        if not (res.state.data = env.state.data) then // WOW THIS IS UGLY PLEASE MAKE IT STOP!
+            send_backup_state res.state.node <| env.serialize res.state.data
+        else
+            printfn "handle_message(Request) : State not updated, not backing up..."
 
         let address = sprintf "%s:%s" location port
         if address = env.state.node.address then // For this one (handle collect)
@@ -325,12 +338,14 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
 
     | DeadNode -> // Something has died
         printfn "DEAD: Notified that %s has died" (serialize_guid key)
-        let dead =
-            match deserialize_guid message with
-            | Some(guid) ->
-                guid
-            | None ->
-                failwith "Could not deserialize dead node GUID %s" message
+        let args = split message ','
+
+        let finder, dead =
+            match deserialize_guid args.[0], deserialize_guid args.[1] with
+            | Some(finder_guid), Some(dead_guid) ->
+                finder_guid, dead_guid
+            | _ ->
+                failwith "Could not deserialize dead node GUIDs %s" message
 
         let watched = find_watched_neighbor env.state.node
         //printfn "%s" <| String.replicate 50 "="
@@ -361,8 +376,12 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
                 else
                     current_closest
             let dst = Map.foldBack folder env.state.node.leaves env.state.node.minleaf
-            printfn "DEAD: Forwarding 'dead' call to %s" (serialize_guid dst)
-            route_func env DeadNode message dst
+            if dst = finder then
+                printfn "DEAD: The one who found the dead node should be its watcher!"
+                resource_response env.state "Handled" 200
+            else
+                printfn "DEAD: Forwarding 'dead' call to %s" (serialize_guid dst)
+                route_func env DeadNode message dst
     | Backup ->
         printfn "BACKUP: Backup received!"
         let new_node = { env.state.node with backup = message; }
@@ -395,7 +414,7 @@ let rec route_leaf (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: G
             route_leaf new_env typ msg key route_func
 
 // Routes a message somewhere
-let rec route<'a> (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: GUID)
+let rec route<'a when 'a : equality> (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: GUID)
         : ResourceResponse<'a> =
     printfn "ROUTE: | Routing '%A'" typ
     printfn "ROUTE: | towards '%A'" key
@@ -432,7 +451,7 @@ let rec route<'a> (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: GU
         route_leaf env typ message key route
 
 // Attempts to forward a message to a pastry node using the given url parts
-let try_forward_pastry<'a> (env: PastryEnv<'a>) (cmd_str: string) (dst_str: string)
+let try_forward_pastry<'a when 'a : equality> (env: PastryEnv<'a>) (cmd_str: string) (dst_str: string)
         (body: string) (response: HttpListenerResponse)
         : ResourceResponse<'a> =
     match deserialize_guid dst_str with
@@ -475,7 +494,7 @@ let try_forward_pastry<'a> (env: PastryEnv<'a>) (cmd_str: string) (dst_str: stri
         resource_response env.state error_message 400
 
 // Creates a send func !
-let create_send_func<'a> (env: PastryEnv<'a>): SendFunc<'a> =
+let create_send_func<'a when 'a : equality> (env: PastryEnv<'a>): SendFunc<'a> =
     let rec send_func (resource_path: string) (meth: string) (data: string)
             (state: PastryState<'a>): ResourceResponse<'a> =
         match get_destination (split resource_path '/') with
@@ -489,7 +508,7 @@ let create_send_func<'a> (env: PastryEnv<'a>): SendFunc<'a> =
     send_func
 
 // Attempts to forward some given url parts
-let try_forward_resource<'a> (env: PastryEnv<'a>) (split_res_path: string list)
+let try_forward_resource<'a when 'a : equality> (env: PastryEnv<'a>) (split_res_path: string list)
         (meth: string) (data: string) (response: HttpListenerResponse)
         (original_address: string): ResourceResponse<'a> =
     match get_destination split_res_path with
@@ -517,7 +536,7 @@ let try_forward_resource<'a> (env: PastryEnv<'a>) (split_res_path: string list)
         resource_response env.state msg status
 
 // Pings the closest bigger neighbor of a node to see if it's still alive
-let ping_neighbor<'a> (env: PastryEnv<'a>) : PastryState<'a> =
+let ping_neighbor<'a when 'a : equality> (env: PastryEnv<'a>) : PastryState<'a> =
     let neighbor = find_watched_neighbor env.state.node
     printfn "PING: -> %s" (serialize_guid neighbor)
     if neighbor = env.state.node.guid then // No smaller leaves
@@ -584,6 +603,7 @@ let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
             match parts with
             | "pastry"::"collect"::url ->
                 reply response "Received" 200 "Ok"
+                printfn "Collecting request...: %s\n%s" (String.concat "/" url) body
                 let COLLECT_SEPARATOR = '\n'
                 let args = split body COLLECT_SEPARATOR
                 let initial_data = args.[0] // initial data
@@ -602,7 +622,8 @@ let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
                     | None ->
                         printfn "Request '%A' no found!" request
                         env.state.requests
-                {env.state with requests = new_requests;}
+                let new_state = {env.state with requests = new_requests;}
+                new_state
 
             // Forward or handle a request from somewhere for some data
             | "pastry"::"request"::address::port::url ->
@@ -611,10 +632,14 @@ let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
                 let res = try_forward_resource env url meth data response original_address
                 res.state
 
+            | "resource"::"debug"::workflow::[] ->
+                let url = sprintf "debug/%s" workflow
+                let res = env.handle url meth body env.send env.state
+                reply response res.message res.status "Ok"
+                res.state
+
             | "resource"::url -> // Someone requests a resource
                 let res = try_forward_resource env url meth data response env.state.node.address
-                if not (res.state.data = env.state.data) then // WOW THIS IS UGLY PLEASE MAKE IT STOP!
-                    send_backup_state res.state.node <| env.serialize res.state.data
                 res.state
 
             | "pastry"::cmd_string::dst_string::[] ->
@@ -626,7 +651,6 @@ let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
                 error error_message
                 reply response error_message 404 "Not found"
                 env.state
-
 
             | _ ->
                 let error_message = sprintf "Not related to this: %s" path

@@ -10,14 +10,14 @@ type Request = {
 }
 
 // The main state of pastry
-type PastryState<'a> = {
+type PastryState<'a when 'a : equality> = {
     node: Node; // Because nodes change during routing
     data: 'a;   // The data of the application
     requests: Map<Request, HttpListenerResponse list>;
 }
 
 // Updated state, response, status code
-type ResourceResponse<'a> = {
+type ResourceResponse<'a when 'a : equality> = {
     state: PastryState<'a>
     message: string;    // Http response string
     status: int;        // Http status code
@@ -25,18 +25,18 @@ type ResourceResponse<'a> = {
 
 // A function for the resource request func to send requests through
 // partial_resource_url, method, data, state -> response
-type SendFunc<'a> = string -> string -> string -> PastryState<'a> -> ResourceResponse<'a>
+type SendFunc<'a when 'a : equality> = string -> string -> string -> PastryState<'a> -> ResourceResponse<'a>
 
 // A function to handle resource requests
 // url, method, data, send_func, state -> response
-type ResourceRequestFunc<'a> = string -> string -> string -> SendFunc<'a> -> PastryState<'a> -> ResourceResponse<'a>
+type ResourceRequestFunc<'a when 'a : equality> = string -> string -> string -> SendFunc<'a> -> PastryState<'a> -> ResourceResponse<'a>
 
 // A function to serialize the state passed through pastry
-type SerializeFunc<'a> = 'a -> string
+type SerializeFunc<'a when 'a : equality> = 'a -> string
 
 // A record used for passing the current application environment easily through
 // functions
-type PastryEnv<'a> = {
+type PastryEnv<'a when 'a : equality> = {
     send: SendFunc<'a>;
     handle: ResourceRequestFunc<'a>;
     serialize: SerializeFunc<'a>;
