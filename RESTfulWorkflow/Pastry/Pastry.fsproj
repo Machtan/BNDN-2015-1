@@ -67,6 +67,7 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="WebClientWithTimeout.cs" />
     <Compile Include="async_http.fs" />
     <Compile Include="PastryTypes.fs" />
     <Compile Include="PastryUtils.fs" />
@@ -74,6 +75,13 @@
     <None Include="App.config" />
     <Compile Include="pastry.fs" />
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WebClientTimeout\WebClientTimeout.csproj">
+      <Name>WebClientTimeout</Name>
+      <Project>{bcd0acf0-b3a0-4f36-a699-747385eecac1}</Project>
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
