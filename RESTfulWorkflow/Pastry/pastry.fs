@@ -222,17 +222,21 @@ let handle_dead_leaf<'a> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFun
             let new_node = { new_env.state.node with maxleaf = new_env.state.node.minleaf; }
             { new_env.state with node = new_node; }
     else
-        // Ask it for its state
-        let response = route_func new_env GetState "" end_leaf
-        let final_env = { new_env with state = response.state; }
-        let state = deserialize response.message
+        if new_env.state.node.leaves.Count = (MAX_LEAVES - 1) then // Used to be full
+            // Ask it for its state
+            let response = route_func new_env GetState "" end_leaf
+            let final_env = { new_env with state = response.state; }
+            let state = deserialize response.message
 
-        // Get the replacement leaves if any
-        let update_folder guid addr new_node =
-            if not (guid = leaf) then try_add_leaf new_node guid addr
-            else new_node
-        let new_node = Map.foldBack update_folder state.leaves final_env.state.node
-        { final_env.state with node = new_node; }
+            // Get the replacement leaves if any
+            let update_folder guid addr new_node =
+                if not (guid = leaf) then try_add_leaf new_node guid addr
+                else new_node
+            let new_node = Map.foldBack update_folder state.leaves final_env.state.node
+            { final_env.state with node = new_node; }
+        else
+            printfn "DEAD: Not enough leaves to look for a replacement"
+            new_env.state
 
 // Updates this node based on a new node that is joining the network
 let update_node<'a> (env: PastryEnv<'a>) (new_node: Node) : PastryState<'a> =
