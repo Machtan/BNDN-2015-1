@@ -340,6 +340,8 @@ let send_http (action: HttpAction) (timeout: int option): HttpResult =
 // be forwarded towards a pastry node, carrying some data
 let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
         (destination: GUID) (timeout: int option): HttpResult =
+    // Sleep a little. This might prevent too fast local communication
+    System.Threading.Thread.Sleep(10)
     match typ with
     | Resource(path, meth) ->
         let url = sprintf "http://%s/resource/%s" address path
@@ -368,7 +370,7 @@ let send_message (address: NetworkLocation) (typ: MessageType) (message: string)
 
     | Collect(url) ->
         let return_url = sprintf "http://%s/pastry/collect/%s" address url
-        let action = Upload(url, "PUT", message)
+        let action = Upload(return_url, "PUT", message)
         send_http action timeout
 
     | _ ->

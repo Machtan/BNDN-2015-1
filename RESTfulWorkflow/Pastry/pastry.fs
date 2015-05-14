@@ -292,18 +292,13 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
 
         let address = sprintf "%s:%s" location port
         if address = env.state.node.address then // For this one (handle collect)
-            let COLLECT_SEPARATOR = '\n'
-            let args = split message COLLECT_SEPARATOR
-            let initial_data = args.[0] // initial data
-            let initial_meth = args.[1]
-            let data = args.[2]
-            let status = int args.[3]
+            printfn "Collecting %A..." typ
             let new_requests =
-                let request = new_request url initial_meth initial_data
+                let request = new_request url meth data
                 match Map.tryFind request res.state.requests with
                 | Some(responses) ->
                     let respond response =
-                        reply response data status "Ok"
+                        reply response res.message res.status "Ok"
                     List.iter respond responses
                     Map.remove request res.state.requests
                 | None ->
@@ -312,6 +307,7 @@ let handle_message<'a> (env: PastryEnv<'a>) (typ: MessageType) (message: string)
             let new_state = {res.state with requests = new_requests;}
             resource_response new_state "Ok" 200
         else // Send collect
+            printfn "Sending collect of %A..." typ
             let collect_type = Collect(url)
             let collect_message = sprintf "%s\n%s\n%s\n%d" data meth res.message res.status
             match send_message address collect_type collect_message res.state.node.guid None with
@@ -414,9 +410,6 @@ let rec route<'a> (env: PastryEnv<'a>) (typ: MessageType) (msg: string) (key: GU
                 else
                     env.state
 
-            printfn "Sleeping before forwarding join..."
-            Thread.Sleep(1000)
-            printfn "Done! Continuing..."
             let msg = sprintf "%s%s%s" msg SEPARATOR (serialize new_state.node)
             new_state, msg
         | _ ->
@@ -513,7 +506,7 @@ let try_forward_resource<'a> (env: PastryEnv<'a>) (split_res_path: string list)
                 [response]
         let new_requests = Map.add request new_responses env.state.requests
         let new_env = { env with state = { env.state with requests = new_requests;}}
-        let route_response = route env message data guid
+        let route_response = route new_env message data guid
         route_response
     | Error(msg, status, reason) ->
         reply response msg status reason
