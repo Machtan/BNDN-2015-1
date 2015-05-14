@@ -46,6 +46,7 @@ let print_actions (actions: (string * string * 'a) list) (state: State) =
 
 // Does some http stuff (like error handling)
 let send_http (action: HttpAction) : HttpResult =
+    System.Threading.Thread.Sleep(5) // Don't overload localhost
     try
         use w = new System.Net.WebClient ()
         match action with

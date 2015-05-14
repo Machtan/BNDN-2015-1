@@ -223,6 +223,7 @@ let handle_user (action: UserAction) (state: PastryState<Repository>)
     | UserAction.GetRoles(user, workflow) ->
         let roles = get_user_roles user workflow state
         let message = String.concat "," roles
+        printfn "USER: Request for %s @ %s: %s" user workflow message
         resource_response state message 200
 
     | UserAction.AddRoles(user, workflow, roles) ->

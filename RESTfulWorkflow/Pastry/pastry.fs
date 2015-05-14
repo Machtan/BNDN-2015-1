@@ -184,6 +184,7 @@ let migrate_dead_leaf<'a when 'a : equality> (env: PastryEnv<'a>) (neighbor: GUI
 let handle_dead_leaf<'a when 'a : equality> (env: PastryEnv<'a>) (leaf: GUID) (route_func: RouteFunc<'a>)
         : PastryState<'a> =
     printfn "DEAD: Removing dead leaf %s from leaf set" (serialize_guid leaf)
+
     let node_with_leaves = remove_leaf env.state.node leaf
     // Find out what to do with the death
     let watched = find_watched_neighbor env.state.node
@@ -297,7 +298,7 @@ let handle_message<'a when 'a : equality> (env: PastryEnv<'a>) (typ: MessageType
             send_backup_state res.state.node <| env.serialize res.state.data
         else
             printfn "handle_message(Resource) : State not updated, not backing up..."
-        resource_response res.state "Ok" 200
+        resource_response res.state res.message res.status
 
     | Request(location, port, url, meth, data) ->
         let res = env.handle url meth data env.send env.state
@@ -309,7 +310,7 @@ let handle_message<'a when 'a : equality> (env: PastryEnv<'a>) (typ: MessageType
 
         let address = sprintf "%s:%s" location port
         if address = env.state.node.address then // For this one (handle collect)
-            printfn "Collecting %A..." typ
+            printfn "Collecting %A...: -> %s" typ data
             let new_requests =
                 let request = new_request url meth data
                 match Map.tryFind request res.state.requests with
@@ -603,7 +604,7 @@ let start_listening<'a when 'a: equality> (env: PastryEnv<'a>) =
             match parts with
             | "pastry"::"collect"::url ->
                 reply response "Received" 200 "Ok"
-                printfn "Collecting request...: %s\n%s" (String.concat "/" url) body
+                printfn "Collecting request...: %s -> %s" (String.concat "/" url) body
                 let COLLECT_SEPARATOR = '\n'
                 let args = split body COLLECT_SEPARATOR
                 let initial_data = args.[0] // initial data
