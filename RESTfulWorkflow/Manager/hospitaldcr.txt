@@ -7,7 +7,7 @@ rol Patient
 rol Reception_1
 rol Reception_2
 rol UBS_management
-use Test EHealth Hospital_management Hospital_specialist Non_specialist_physician_UBS Patient Reception_1 Reception_2
+use Test EHealth Hospital_management Hospital_specialist Non_specialist_physician_UBS Patient Reception_1 Reception_2 UBS_management
 use Patient Patient
 use EHealth EHealth
 use Hospital Hospital_management Hospital_specialist
