@@ -13,6 +13,7 @@ namemap = {
 RELATIONNAME    = "rel"
 ROLENAME        = "rol"
 EVENTNAME       = "eve"
+USERNAME        = "use"
 
 # role: Role <name>
 # create: Event <name> <Role>
@@ -29,14 +30,27 @@ def dcrconv(file):
     specs = root[0]
     resources = specs[0]
     constraints = specs[1]
+    
+    users = {}
+    all_roles = set()
 
     for role in resources.find("custom").find("roles"):
         name = role.text.replace(" ", "_")
         lines.append("{} {}".format(ROLENAME, name))
-
+        all_roles.add(name)
+        users[name] = [name]
+    
+    for name, roles in users.items():
+        lines.append("{} {} {}".format(USERNAME, name, " ".join(roles)))
+    lines.append("{} Test {}".format(USERNAME, " ".join(all_roles)))
+    
     for event in resources.find("events"):
         eid = event.attrib["id"]
-        roles = [role.text.replace(" ", "_") for role in event.find("custom").find("roles")]
+        roles = []
+        for role in event.find("custom").find("roles"):
+            if role.text:
+                roles.append(role.text.replace(" ", "_"))
+        #roles = [role.text.replace(" ", "_") for role in event.find("custom").find("roles")]
         #print("Adding {} to {}".format(roles, eid))
         roletext = " ".join(roles)
         events[eid] = [roletext]
@@ -60,10 +74,10 @@ def dcrconv(file):
 
     #pprint.pprint(events)
     for event, attrs in events.items():
-        role = attrs[0]
+        role = " " + attrs[0] if attrs[0] else ""
         name = attrs[1]
         state = attrs[2]
-        lines.append("{} {} {} {}".format(EVENTNAME, state, name, role))
+        lines.append("{} {} {}{}".format(EVENTNAME, state, name, role))
 
     for supertag, relname in namemap.items():
         for tag in constraints.find(supertag):
