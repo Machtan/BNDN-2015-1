@@ -1,0 +1,11 @@
+name = "NewClient"
+main = "NewClient"
+authors = [
+    "Jakob Lautrup Nysom", "Patrick Evers Bjørkman"
+]
+libraries = []
+
+includes = []
+
+[targets] # Dependencies
+NewClient = []

@@ -1,0 +1,17 @@
+name = "PastryDemo"
+main = "PastryDemo"
+authors = ["Jakob Lautrup Nysom"]
+libraries = [
+    "Newtonsoft.Json",
+    "WebClientWithTimeout",
+]
+
+includes = [
+    "binaries"
+]
+
+[targets] # Dependencies
+Pastry = ["PastryTypes", "PastryUtils"]
+PastryTypes = []
+PastryUtils = ["PastryTypes", "Newtonsoft.Json", "WebClientWithTimeout"]
+PastryDemo = ["Pastry", "Newtonsoft.Json"]

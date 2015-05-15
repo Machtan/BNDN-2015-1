@@ -1,0 +1,18 @@
+wor Mellem
+rol Student
+rol Teacher
+
+eve register Student
+eve pass Teacher
+eve fail Teacher
+
+rel register exclusion register
+rel register condition pass
+rel register response pass
+rel register condition fail
+
+rel pass exclusion pass
+rel pass exclusion fail
+
+rel fail exclusion fail
+rel fail exclusion pass
